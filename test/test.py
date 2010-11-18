@@ -87,6 +87,6 @@ if __name__ == '__main__':
     os.system ('rm -rf %s/*' % (gs._base_path))
     test_repo_create (gs)
     test_branch ()
-    test_log ()
+#    test_log ()
 
 # vim: set sw=4 ts=4 et :
