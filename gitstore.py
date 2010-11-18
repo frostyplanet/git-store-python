@@ -38,11 +38,13 @@ class GitStore (object):
         raise Exception (msg)
     
     def _get_repo_path (self, repo_name):
+        assert isinstance (repo_name, str)
         return os.path.join (self._base_path, repo_name)
 
     def _get_repo (self, repo_name):
         """on suc return opened repo obj, otherwise return None
            """
+        assert isinstance (repo_name, str)
         repo_path = self._get_repo_path (repo_name)
         if not os.path.isdir (repo_path):
             self._throw_err ("repo '%s' not found" % (repo_name))
@@ -56,9 +58,8 @@ class GitStore (object):
     def _get_branch (self, repo, branch_name):
         """ return branch's git.Object.ref
             """
+        assert isinstance (branch_name, str)
         branch = None
-        if not branch_name:
-            return None
         try:
             branch = repo.branches[branch_name]
         except IndexError:
@@ -69,6 +70,7 @@ class GitStore (object):
         """ return new file's istream
             """
         assert repo
+        assert isinstance (tempfile, str)
         st = os.stat (tempfile)
         temp_fp = open (tempfile, 'r')
         input = IStream ("blob", st.st_size, temp_fp)
@@ -79,7 +81,9 @@ class GitStore (object):
     def _store_tree (self, repo, entities):
         """return tree's istream
             """
+        assert repo
         sio = StringIO ()
+        assert isinstance (entities, list)
         tree_to_stream (entities, sio.write)
         sio.seek (0)
         t_stream = IStream ("tree", len(sio.getvalue ()), sio)
@@ -88,7 +92,9 @@ class GitStore (object):
         return t_stream
 
     def _create_path (self, repo, tree, path_segs, stream, is_file=True):
-        assert path_segs
+        assert repo
+        assert isinstance (path_segs, list)
+        assert isinstance (stream, IStream)
         item_name = path_segs[0]
         item_mode = None
         _stream = None
@@ -123,6 +129,9 @@ class GitStore (object):
     def _do_commit (self, repo, head, tree_binsha, msg, parent=None):
         """ return new commit's hexsha, on error return None and output error
             """
+        assert (repo)
+        assert isinstance (head, HEAD) or isinstance (head, Head)
+        assert msg != None
         new_commit = Commit.create_from_tree (repo, Tree (repo, tree_binsha), msg, \
                             parent_commits=parent, head=False) 
         head.commit = new_commit #modify head's ref to commit
@@ -132,6 +141,7 @@ class GitStore (object):
     def create_repo (self, repo_name):
         """return hexsha of new repo's head
            """
+        assert isinstance (repo_name, str)
         repo_path = self._get_repo_path (repo_name)
         if os.path.isdir (repo_path):
             self._throw_err ("repo '%s' already exists" % (repo_name))
@@ -151,6 +161,8 @@ class GitStore (object):
     def create_branch (self, repo_name, new_branch, from_branch='master'):
         """return hexsha of new repo's head
            """
+        assert isinstance (repo_name, str)
+        assert isinstance (new_branch, str)
         repo = self._get_repo (repo_name)
         _from = self._get_branch (repo, from_branch)
         if not _from:
@@ -167,27 +179,35 @@ class GitStore (object):
     def ls_branches (self, repo_name):
         """return a dict, containing echo branch and its head hexsha
             """
+        assert isinstance (repo_name, str)
         repo = self._get_repo (repo_name)
         result = dict ()
         for _branch in repo.branches:
              result[str(_branch)] = _branch.commit.hexsha
         return result
             
-    def ls (self, repo_name):
-        pass
+    def ls (self, repo_name, branch):
+        """
+            """
 
     def log (self, repo_name, branch, path):
+        assert isinstance (repo_name, str)
+        assert isinstance (branch, str)
         pass
 
     def read (self, repo_name, branch, filename, version):
+        assert isinstance (repo_name, str)
+        assert isinstance (branch, str)
         pass
 
     def checkout (self, repo_name, branch, filename, version, tempfile):
+        assert isinstance (repo_name, str)
+        assert isinstance (branch, str)
         pass
 
     def store (self, repo_name, branch, filepath, tempfile):
-        assert repo_name
-        assert branch
+        assert isinstance (repo_name, str)
+        assert isinstance (branch, str)
         repo = self._get_repo (repo_name)
         head = self._get_branch (repo, branch)
         if not head:

@@ -41,9 +41,15 @@ def test_branch ():
     pprint.pprint (branches)
     assert (len (branches) == 2)
     print "store file into branch1:"
-    new_head = gs.store ("unit_test", "branch1", "haha/haha/testfile", "test/test_file2")
-    assert branch_head != new_head 
-    print "branch1", new_head
+    branch1_head = gs.store ("unit_test", "branch1", "haha/haha/testfile", "test/test_file2")
+    assert branch_head != branch1_head 
+    master_head = gs.store ("unit_test", "master", "haha/testfile", "test/test_file")
+    print "store file into master:"
+    branches = gs.ls_branches ("unit_test")
+    assert branches["master"] == master_head
+    assert branches["branch1"] == branch1_head
+    pprint.pprint (branches)
+
 
 #
 #def test_store ():
