@@ -246,10 +246,25 @@ class GitStore (object):
             self._throw_err ("ls repo '%s' branch '%s' error: %s" % (repo_name, branch, str(e)))
         return result
 
-    def log (self, repo_name, branch, path):
-        assert isinstance (repo_name, str)
-        assert isinstance (branch, str)
-        pass
+#    def log (self, repo_name, branch, path=None):
+#        assert isinstance (repo_name, str)
+#        assert isinstance (branch, str)
+#        repo = self._get_repo (repo_name)
+#        head = self._get_branch (repo, branch)
+#        if not head:
+#            self._throw_err ("repo '%s' has no branch '%s'" % (repo_name, branch))
+#        commit = head.commit
+#        result = []
+#        commit_dict = dict ()
+#        stack = []
+#        while True:
+#            result.append ({
+#                'log': commit.,
+#                'version:' :,
+#                })
+#            parent_num = len(commit.parents)
+#            if parent_num == 0:
+#                break
 
     def read (self, repo_name, branch, filename, version = None):
         assert isinstance (repo_name, str)
@@ -275,7 +290,6 @@ class GitStore (object):
             buf = iostream.read ()
             return buf
         self._throw_err ("repo '%s' branch '%s' has no path '%s'" % (repo_name, branch, filename))
-
 
     def checkout (self, repo_name, branch, filename, version, tempfile):
         """ version may be None
@@ -309,9 +323,10 @@ class GitStore (object):
                     (filepath, repo_name, str (e)))
         commit = None
         try:
-            commit = self._do_commit (repo, head, tree_binsha, "add file %s" % (filepath))
+            commit = self._do_commit (repo, head, tree_binsha, "store file %s" % (filepath))
         except Exception, e:
             self._throw_err ("cannot create a new commit in '%s': %s" % (repo_name, str (e)))
         return commit.hexsha
+
 
 # vim: set sw=4 ts=4 et :
