@@ -12,6 +12,18 @@ import pprint
 from stat import *
 from os.path import dirname, abspath, join
 
+
+def split_path (filepath):
+    assert filepath
+    path_segs = []
+    _head = filepath
+    while True:
+        _head, _tail = os.path.split (_head)
+        path_segs.insert (0, _tail)
+        if not _head:
+            break
+    return path_segs
+
 class GitStore (object):
     
     _base_path = None
@@ -137,6 +149,36 @@ class GitStore (object):
         head.commit = new_commit #modify head's ref to commit
         return new_commit
 
+            
+    def _ls_dir (self, repo, tree, basepath):
+        """ return a list of filepath
+            """
+        assert (repo)
+        assert isinstance (tree, Tree)
+        assert isinstance (basepath, str)
+        result = []
+        for t in tree.trees:
+            _result = self._ls_dir (repo, t, os.path.join (basepath, t.name))
+            result.extend (_result)
+        for b in tree.blobs:
+            result.append (basepath + b.name)
+        return result
+
+    def _find_path (self, tree, path):
+        assert isinstance (tree, Tree)
+        assert path
+        path_segs = split_path (path)
+        path_item = path_segs[0]
+        sub_tree = None
+        try:
+            sub_tree = tree[path_item]
+        except: 
+            pass
+        if isinstance (sub_tree, Object):
+            if len(path_segs) == 1:
+                return sub_tree
+            return self._find_path (sub_tree, str.join("/", path_segs[1:]))
+        return None
 
     def create_repo (self, repo_name):
         """return hexsha of new repo's head
@@ -187,23 +229,67 @@ class GitStore (object):
         return result
             
     def ls (self, repo_name, branch):
-        """
+        """ list files in repo's branch
             """
+        assert isinstance (repo_name, str)
+        assert isinstance (branch, str)
+        result = list ()
+        stack = list ()
+        repo = self._get_repo (repo_name) 
+        head = self._get_branch (repo, branch)
+        if not head:
+            self._throw_err ("repo '%s' has no branch '%s'" % (repo_name, branch))
+        top_tree = head.commit.tree
+        try:
+            result = self._ls_dir (repo, top_tree, "")
+        except Exception, e:
+            self._throw_err ("ls repo '%s' branch '%s' error: %s" % (repo_name, branch, str(e)))
+        return result
 
     def log (self, repo_name, branch, path):
         assert isinstance (repo_name, str)
         assert isinstance (branch, str)
         pass
 
-    def read (self, repo_name, branch, filename, version):
+    def read (self, repo_name, branch, filename, version = None):
         assert isinstance (repo_name, str)
         assert isinstance (branch, str)
-        pass
+        repo = self._get_repo (repo_name)
+        commit = None
+        if version:
+            commit = repo.commit (version)
+            if not commit:
+                self._throw_err ("commit '%s' repo '%s' not exists" % (version, branch, repo_name))
+        else:
+            head = self._get_branch (repo, branch)
+            if not head:
+                self._throw_err ("branch '%s' of repo '%s' not exists" % (branch, repo_name))
+            commit = head.commit
+        file = None
+        try:
+            file = self._find_path (commit.tree, filename)
+        except Exception, e:
+            self._throw_err ("repo '%s' branch '%s' cannot get path '%s': %s"  % (repo_name, branch, filename, str(e)))
+        if isinstance (file, Object):
+            iostream = file.data_stream
+            buf = iostream.read ()
+            return buf
+        self._throw_err ("repo '%s' branch '%s' has no path '%s'" % (repo_name, branch, filename))
+
 
     def checkout (self, repo_name, branch, filename, version, tempfile):
+        """ version may be None
+            returns nothing
+            """
         assert isinstance (repo_name, str)
         assert isinstance (branch, str)
-        pass
+        buf = self.read (repo_name, branch, filename ,version)
+        try:
+            file = open (tempfile, "w+")
+            file.write (buf)
+            file.close ()
+        except Exception, e:
+            self._throw_err ("repo '%s' branch '%s' checkout '%s' of version '%s' error: %s" % (repo_name, branch, filename, version, str(e)))
 
     def store (self, repo_name, branch, filepath, tempfile):
         assert isinstance (repo_name, str)
@@ -214,14 +300,7 @@ class GitStore (object):
             self._throw_err ("branch '%s' of repo '%s' not exists" % (branch, repo_name))
         tree_binsha = None
         try:
-            path_segs = []
-            _head = filepath
-            while True:
-                _head, _tail = os.path.split (_head)
-                path_segs.insert (0, _tail)
-                if not _head:
-                    break
-            
+            path_segs = split_path (filepath)
             f_stream = self._store_file (repo, tempfile) #store file content
             t_stream = self._create_path (repo, head.commit.tree, path_segs, f_stream)
             tree_binsha = t_stream.binsha
