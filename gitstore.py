@@ -219,7 +219,7 @@ class GitStore (object):
         return head.commit.hexsha
     
     def ls_branches (self, repo_name):
-        """return a dict, containing echo branch and its head hexsha
+        """return a dict, containing echo branch and its head commit hexSHA
             """
         assert isinstance (repo_name, str)
         repo = self._get_repo (repo_name)
@@ -228,8 +228,8 @@ class GitStore (object):
              result[str(_branch)] = _branch.commit.hexsha
         return result
             
-    def ls (self, repo_name, branch):
-        """ list files in repo's branch
+    def ls (self, repo_name, branch='master'):
+        """ list files in repo's branch, return a list containing filepath
             """
         assert isinstance (repo_name, str)
         assert isinstance (branch, str)
@@ -266,17 +266,19 @@ class GitStore (object):
 #            if parent_num == 0:
 #                break
 
-    def read (self, repo_name, branch, filename, version = None):
+    def read (self, repo_name, version, filename):
+        """ version may be : HEAD/branch_name/specified_commit,
+            return file content
+            """
         assert isinstance (repo_name, str)
-        assert isinstance (branch, str)
         repo = self._get_repo (repo_name)
         commit = None
         if version:
             commit = repo.commit (version)
             if not commit:
-                self._throw_err ("commit '%s' repo '%s' not exists" % (version, branch, repo_name))
+                self._throw_err (" '%s' repo '%s' not exists" % (version, branch, repo_name))
         else:
-            head = self._get_branch (repo, branch)
+            head = self._get_branch (repo, 'master')
             if not head:
                 self._throw_err ("branch '%s' of repo '%s' not exists" % (branch, repo_name))
             commit = head.commit
@@ -291,13 +293,12 @@ class GitStore (object):
             return buf
         self._throw_err ("repo '%s' branch '%s' has no path '%s'" % (repo_name, branch, filename))
 
-    def checkout (self, repo_name, branch, filename, version, tempfile):
-        """ version may be None
+    def checkout (self, repo_name, version, filename, tempfile):
+        """ version may be : HEAD/branch_name/specified_commit
             returns nothing
             """
         assert isinstance (repo_name, str)
-        assert isinstance (branch, str)
-        buf = self.read (repo_name, branch, filename ,version)
+        buf = self.read (repo_name, version, filename)
         try:
             file = open (tempfile, "w+")
             file.write (buf)
@@ -306,6 +307,8 @@ class GitStore (object):
             self._throw_err ("repo '%s' branch '%s' checkout '%s' of version '%s' error: %s" % (repo_name, branch, filename, version, str(e)))
 
     def store (self, repo_name, branch, filepath, tempfile):
+        """ return new commit version after store a file
+            """
         assert isinstance (repo_name, str)
         assert isinstance (branch, str)
         repo = self._get_repo (repo_name)

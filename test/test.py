@@ -40,12 +40,12 @@ def _get_md5 (file):
     if arr: return arr[0]
     return None
 
-def test_checkout (repo_name, branch, filepath, version, orgfile):
+def test_checkout (repo_name, version, filepath, orgfile):
     tempfile = "/tmp/foo"
-    gs.checkout (repo_name, branch, filepath, version, tempfile)
+    gs.checkout (repo_name, version, filepath, tempfile)
     md51 = _get_md5 (tempfile)
     md52 = _get_md5 (orgfile)
-    print "compare", repo_name, branch, filepath, version, tempfile, orgfile
+    print "compare", repo_name, filepath, version, tempfile, orgfile
     print "got", md51, md52
     assert md51 == md52
     if os.path.isfile (tempfile): os.unlink (tempfile)
@@ -74,9 +74,9 @@ def test_branch ():
     master_head_new = gs.store ("unit_test", "master", "haha/testfile", "test/test_file2")
     print "master has advanced to ", master_head_new
     print "checkout master"
-    test_checkout ('unit_test', "master", "haha/testfile", master_head, "test/test_file")
-    test_checkout ('unit_test', "master", "haha/testfile", master_head_new, "test/test_file2")
-    test_checkout ("unit_test", "branch1", "haha/haha/testfile", branch1_head, "test/test_file2")
+    test_checkout ('unit_test', master_head, "haha/testfile", "test/test_file")
+    test_checkout ('unit_test', master_head_new, "haha/testfile", "test/test_file2")
+    test_checkout ("unit_test", branch1_head, "haha/haha/testfile", "test/test_file2")
 
 def test_log ():
     print "test log:"
