@@ -161,7 +161,7 @@ class GitStore (object):
             _result = self._ls_dir (repo, t, os.path.join (basepath, t.name))
             result.extend (_result)
         for b in tree.blobs:
-            result.append (basepath + b.name)
+            result.append (os.path.join (basepath, b.name))
         return result
 
     def _find_path (self, tree, path):
@@ -304,7 +304,7 @@ class GitStore (object):
             file.write (buf)
             file.close ()
         except Exception, e:
-            self._throw_err ("repo '%s' branch '%s' checkout '%s' of version '%s' error: %s" % (repo_name, branch, filename, version, str(e)))
+            self._throw_err ("repo '%s' checkout '%s' of version '%s' error: %s" % (repo_name, filename, version, str(e)))
 
     def store (self, repo_name, branch, filepath, tempfile):
         """ return new commit version after store a file
