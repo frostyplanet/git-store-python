@@ -12,7 +12,6 @@ import pprint
 from stat import *
 from os.path import dirname, abspath, join
 
-
 def split_path (filepath):
     assert filepath
     path_segs = []
@@ -225,6 +224,10 @@ class GitStore (object):
         except Exception, e: 
             self._throw_err ("repo '%s' cannot create branch '%s' from '%s'" % (repo_name, new_branch, from_branch))
         return head.commit.hexsha
+
+    def ls_repos (self):
+        """return a list of repo_name"""
+        return os.listdir (self._base_path)
     
     def ls_branches (self, repo_name):
         """return a dict, containing echo branch and its head commit hexSHA
@@ -236,22 +239,22 @@ class GitStore (object):
              result[str(_branch)] = _branch.commit.hexsha
         return result
             
-    def ls (self, repo_name, branch='master'):
+    def ls (self, repo_name, version='HEAD'):
         """ list files in repo's branch, return a list containing filepath
             """
         assert isinstance (repo_name, str)
-        assert isinstance (branch, str)
+        assert isinstance (version, str)
         result = list ()
         stack = list ()
         repo = self._get_repo (repo_name) 
-        head = self._get_branch (repo, branch)
-        if not head:
-            self._throw_err ("repo '%s' has no branch '%s'" % (repo_name, branch))
-        top_tree = head.commit.tree
+        commit = self._get_commit (repo, version)
+        if not isinstance (commit, Object):
+            self._throw_err ("repo '%s' has no revision '%s'" % (repo_name, version))
+        top_tree = commit.tree
         try:
             result = self._ls_dir (repo, top_tree, "")
         except Exception, e:
-            self._throw_err ("ls repo '%s' branch '%s' error: %s" % (repo_name, branch, str(e)))
+            self._throw_err ("ls repo '%s' revision '%s' error: %s" % (repo_name, version, str(e)))
         return result
 
     def log (self, repo_name, version='HEAD', exclude_version=None, filepath=None):
@@ -264,6 +267,9 @@ class GitStore (object):
         assert isinstance (version, str)
         assert not exclude_version or isinstance (exclude_version, str)
         repo = self._get_repo (repo_name)
+        # if revision not exist, iter_commits will give empty result, so we check first 
+        if not isinstance (self._get_commit (repo, version), Object):
+            self._throw_err ("repo:%s has no revision %s" % (repo_name, version))
         if exclude_version:
             if not isinstance (self._get_commit (repo, exclude_version), Object):
                 self._throw_err ("repo:%s has no revision %s" % (repo_name, exclude_version))

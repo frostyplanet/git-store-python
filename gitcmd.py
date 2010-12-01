@@ -16,6 +16,12 @@ def create_branch (args):
 	gs = GitStore ()
 	commit = gs.create_branch (*args)
 
+def ls_repos (args):
+	gs = GitStore ()
+	repos = gs.ls_repos (*args)
+	for r in repos:
+		print r
+
 def ls_branches (args):
 	gs = GitStore ()
 	branches = gs.ls_branches (*args)
@@ -68,8 +74,11 @@ g_cmds = {
 	},
 	'create_branch': {
 		'handle':create_branch,
-		'args':['repo_name', 'new_branch', ],
+		'args':['repo_name', 'new_branch'],
 		'optional_args':['from_branch'],
+	},
+	'ls_repos': {
+		'handle': ls_repos,
 	},
 	'ls_branches': {
 		'handle': ls_branches,
@@ -78,7 +87,7 @@ g_cmds = {
 	'ls': {
 		'handle': ls,
 		'args': ['repo_name'],
-		'optional_args': ['branch'],
+		'optional_args': ['revision'],
 	},
 	'read': {
 		'handle':read,
@@ -146,7 +155,8 @@ def call_cmd (cmd, args):
 	try:
 		slot['handle'] (args)
 	except Exception, e:
-		traceback.print_exc()
+	 	print >>sys.stderr, "error, %s" % str(e)
+#		traceback.print_exc()
 		sys.exit (1)
 	sys.exit (0)
 
