@@ -80,13 +80,13 @@ def test_branch ():
 
 def test_log ():
     print "test log:"
-    gs.log ("unit_test", "master")
+    pprint.pprint (gs.log ("unit_test", "master"))
 
 if __name__ == '__main__':
     gs = GitStore ()
     os.system ('rm -rf %s/*' % (gs._base_path))
     test_repo_create (gs)
     test_branch ()
-#    test_log ()
+    test_log ()
 
 # vim: set sw=4 ts=4 et :

@@ -77,6 +77,14 @@ class GitStore (object):
         except IndexError:
             return None
         return branch
+
+    def _get_commit (self, repo, rev):
+        commit = None
+        try:
+            commit = repo.commit (rev)
+        except BadObject, e:
+            pass
+        return commit
     
     def _store_file (self, repo, tempfile):
         """ return new file's istream
@@ -246,35 +254,41 @@ class GitStore (object):
             self._throw_err ("ls repo '%s' branch '%s' error: %s" % (repo_name, branch, str(e)))
         return result
 
-#    def log (self, repo_name, branch, path=None):
-#        assert isinstance (repo_name, str)
-#        assert isinstance (branch, str)
-#        repo = self._get_repo (repo_name)
-#        head = self._get_branch (repo, branch)
-#        if not head:
-#            self._throw_err ("repo '%s' has no branch '%s'" % (repo_name, branch))
-#        commit = head.commit
-#        result = []
-#        commit_dict = dict ()
-#        stack = []
-#        while True:
-#            result.append ({
-#                'log': commit.,
-#                'version:' :,
-#                })
-#            parent_num = len(commit.parents)
-#            if parent_num == 0:
-#                break
+    def log (self, repo_name, version='HEAD', exclude_version=None, filepath=None):
+        """ query the commit log, equal to 'git log version' or 'git log exclude_version..version'.
+            version & exclude_version may be HEAD/branch/specified_rev, refer to gitrevisions(7) manpage.
+            if file_path specified, just return the commits that have change to 'filepath'.
+            commits that fits in will return in a list, each element will be a dict {'commit': ..., 'msg':..., 'author':..., 'date':AUTHOR_DATE }
+            """
+        assert isinstance (repo_name, str)
+        assert isinstance (version, str)
+        assert not exclude_version or isinstance (exclude_version, str)
+        repo = self._get_repo (repo_name)
+        if exclude_version:
+            if not isinstance (self._get_commit (repo, exclude_version), Object):
+                self._throw_err ("repo:%s has no revision %s" % (repo_name, exclude_version))
+            rev_name = "%s..%s" % (exclude_version, version)
+        else:
+            rev_name = version
+        result = []
+        for commit in repo.iter_commits (rev_name, filepath):
+            result.append ({
+                    'commit': commit.hexsha,
+                    'msg': commit.message,
+                    'author_timestamp': commit.authored_date,
+                    'author': commit.author.name,
+                    })
+        return result
 
     def read (self, repo_name, version, filename):
-        """ version may be : HEAD/branch_name/specified_commit,
+        """ version may be : HEAD/branch_name/specified_rev, refer to gitrevisions(7) manpage
             return file content
             """
         assert isinstance (repo_name, str)
         repo = self._get_repo (repo_name)
         commit = None
         if version:
-            commit = repo.commit (version)
+            commit = self._get_commit (repo, version)
             if not commit:
                 self._throw_err (" '%s' repo '%s' not exists" % (version, branch, repo_name))
         else:

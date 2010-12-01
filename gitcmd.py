@@ -4,6 +4,8 @@ import sys
 import string
 import os
 from gitstore import *
+from getopt import *
+import traceback
 
 def create_repo (args):
 	gs = GitStore ()
@@ -39,6 +41,26 @@ def store (args):
 	gs = GitStore ()
 	print gs.store (*args)
 
+def commitlog (args):
+	gs = GitStore ()
+	repo_name = args[0]
+	rev = args[1] if len(args)>1 else None
+	path = args[2] if len(args)>2 else None
+	from_rev = None
+	to_rev = None
+	if rev:
+		if rev.find ('..') == -1:
+			to_rev = rev
+		else:
+			arr = rev.split ('..')
+			from_rev = arr[0]
+			to_rev = arr[1]
+	else:
+		to_rev = 'HEAD'
+	result = gs.log (repo_name, to_rev, from_rev, path)
+	for e in result:
+		print "%s:%s;%s" % (e['commit'], e['author_timestamp'], e['msg'])
+
 g_cmds = {
 	'create_repo': {
 		'handle':create_repo,
@@ -60,15 +82,20 @@ g_cmds = {
 	},
 	'read': {
 		'handle':read,
-		'args': ['repo_name', 'version|branch|HEAD', 'filepath'],
+		'args': ['repo_name', 'revision', 'filepath'],
 	},
 	'checkout': {
 		'handle':checkout,
-		'args': ['repo_name', 'version|branch|HEAD', 'filepath', 'tempfile'],
+		'args': ['repo_name', 'revision', 'filepath', 'tempfile'],
 	},
 	'store': {
 		'handle':store,
 		'args': ['repo_name', 'branch', 'filepath', 'tempfile'],
+	},
+	'log': {
+		'handle':commitlog,
+		'args': ['repo_name'],
+		'optional_args':['from..to|revision', 'filepath']
 	},
 }
 
@@ -119,7 +146,7 @@ def call_cmd (cmd, args):
 	try:
 		slot['handle'] (args)
 	except Exception, e:
-		print >>sys.stderr, str (e)
+		traceback.print_exc()
 		sys.exit (1)
 	sys.exit (0)
 
