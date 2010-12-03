@@ -50,8 +50,16 @@ def store (args):
 def commitlog (args):
     gs = GitStore ()
     repo_name = args[0]
-    rev = args[1] if len(args)>1 else None
-    path = args[2] if len(args)>2 else None
+    rev = None
+    if len(args)>1:
+        rev = args[1]
+    else:
+        rev = None
+    path = None 
+    if len(args)>2:
+        path = args[2]
+    else:
+        path = None
     from_rev = None
     to_rev = None
     if rev:
@@ -156,7 +164,7 @@ def call_cmd (cmd, args):
     try:
         slot['handle'] (args)
     except Exception, e:
-         print >>sys.stderr, "error, %s" % str(e)
+        print >>sys.stderr, "error, %s" % str(e)
 #        traceback.print_exc()
         sys.exit (1)
     sys.exit (0)
@@ -167,7 +175,10 @@ if __name__ == '__main__':
     if len(args) > 1:
         cmd = args[1]
         if cmd.find ('help') != -1:
-            help (args[2] if len(args)>2 else None)
+            if len(args)>2:
+                help (args[2])
+            else:
+                help (None)
         else:
             call_cmd (cmd, args[2:])
     else:
