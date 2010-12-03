@@ -78,6 +78,8 @@ class GitStore (object):
         return branch
 
     def _get_commit (self, repo, rev):
+        """ return git.Object.Commit  speified by rev 
+            """
         commit = None
         try:
             commit = repo.commit (rev)
