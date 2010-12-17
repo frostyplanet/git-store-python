@@ -77,6 +77,15 @@ def test_branch ():
     test_checkout ('unit_test', master_head, "haha/testfile", "test/test_file")
     test_checkout ('unit_test', master_head_new, "haha/testfile", "test/test_file2")
     test_checkout ("unit_test", branch1_head, "haha/haha/testfile", "test/test_file2")
+    print "test delete branch1"
+    gs.delete_branch('unit_test', 'branch1')
+    branches = gs.ls_branches ("unit_test")
+    print "check branch1 been deleted"
+    assert 'branch1' not in branches
+    gs.delete_branch('unit_test', 'branch2')
+    branches = gs.ls_branches ("unit_test")
+    print "check branch2 been deleted"
+    assert 'branch2' not in branches
 
 def test_log ():
     print "test log:"

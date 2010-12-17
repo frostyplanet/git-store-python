@@ -227,6 +227,21 @@ class GitStore (object):
             self._throw_err ("repo '%s' cannot create branch '%s' from '%s'" % (repo_name, new_branch, from_branch))
         return head.commit.hexsha
 
+    def delete_branch (self, repo_name, branch):
+        """ returns nothing after delete a branch
+            """
+        assert isinstance (repo_name, str)
+        assert isinstance (branch, str)
+        repo = self._get_repo (repo_name)
+        head = self._get_branch (repo, branch)
+        if not head:
+            self._throw_err ("branch '%s' of repo '%s' not exists" % (branch, repo_name))
+        try:
+            repo.delete_head(head, force=True)
+        except Exception, e:
+            self._throw_err ("cannot delete '%s' in repo '%s': %s" % 
+                    (branch, repo_name, str (e)))
+
     def ls_repos (self):
         """return a list of repo_name"""
         return os.listdir (self._base_path)

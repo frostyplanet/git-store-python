@@ -16,6 +16,10 @@ def create_branch (args):
     gs = GitStore ()
     commit = gs.create_branch (*args)
 
+def delete_branch (args):
+    gs = GitStore ()
+    gs.delete_branch (*args)
+
 def ls_repos (args):
     gs = GitStore ()
     repos = gs.ls_repos (*args)
@@ -84,6 +88,10 @@ g_cmds = {
         'handle':create_branch,
         'args':['repo_name', 'new_branch'],
         'optional_args':['from_branch'],
+    },
+    'delete_branch': {
+        'handle':delete_branch,
+        'args': ['repo_name', 'branch'],
     },
     'ls_repos': {
         'handle': ls_repos,
