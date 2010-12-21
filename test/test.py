@@ -73,6 +73,8 @@ def test_branch ():
     print "store test_file2 into master"
     master_head_new = gs.store ("unit_test", "master", "haha/testfile", "test/test_file2")
     print "master has advanced to ", master_head_new
+    print "test ls_head"
+    assert gs.ls_head('unit_test', 'master') == master_head_new
     print "checkout master"
     test_checkout ('unit_test', master_head, "haha/testfile", "test/test_file")
     test_checkout ('unit_test', master_head_new, "haha/testfile", "test/test_file2")

@@ -255,6 +255,16 @@ class GitStore (object):
         for _branch in repo.branches:
              result[str(_branch)] = _branch.commit.hexsha
         return result
+
+    def ls_head(self, repo_name, branch):
+        """return head hexsha string of the branch"""
+        assert isinstance (repo_name, str)
+        assert isinstance (branch, str)
+        repo = self._get_repo (repo_name)
+        head = self._get_branch (repo, branch)
+        if not head:
+            self._throw_err ("branch '%s' of repo '%s' not exists" % (branch, repo_name))
+        return head.commit.hexsha
             
     def ls (self, repo_name, version='HEAD'):
         """ list files in repo's branch, return a list containing filepath

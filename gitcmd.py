@@ -32,6 +32,10 @@ def ls_branches (args):
     for b, v in branches.iteritems ():
         print b, v
 
+def ls_head (args):
+    gs = GitStore ()
+    print gs.ls_head(*args)
+
 def ls (args):
     gs = GitStore ()
     files = gs.ls (*args)
@@ -99,6 +103,10 @@ g_cmds = {
     'ls_branches': {
         'handle': ls_branches,
         'args': ['repo_name'],
+    },
+    'ls_head': {
+        'handle':ls_head,
+        'args': ['repo_name', 'branch'],
     },
     'ls': {
         'handle': ls,
