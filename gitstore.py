@@ -112,13 +112,13 @@ class GitStore (object):
         sio.close ()
         return t_stream
 
-    def _create_path (self, repo, tree, path_segs, stream, is_file=True):
+    def _create_path (self, repo, tree, path_segs, istream, is_file=True):
         assert repo
         assert isinstance (path_segs, list)
-        assert isinstance (stream, IStream)
+        assert isinstance (istream, IStream)
         item_name = path_segs[0]
         item_mode = None
-        _stream = None
+        _istream = None
         entities = None
         if len (path_segs) > 1 or not is_file: #dir
             item_mode = self.dir_mode
@@ -127,22 +127,23 @@ class GitStore (object):
         if isinstance (tree, Tree):
             if len (path_segs) > 1: #dir
                 if item_name in tree:
-                    if not S_ISDIR (tree[item_name].mode): raise Exception ("oops") #the same name in tree is not dir
-                    _stream = self._create_path (repo, tree[item_name], path_segs[1:], stream)
+                    if not S_ISDIR (tree[item_name].mode): raise Exception ("Oops, target path exists and cannot be override") 
+                    #the same name in tree is not dir
+                    _istream = self._create_path (repo, tree[item_name], path_segs[1:], istream)
                 else:
-                    _stream = self._create_path (repo, None, path_segs[1:], stream)
+                    _istream = self._create_path (repo, None, path_segs[1:], istream)
             else: #file
                 if item_name in tree and not S_ISREG (tree[item_name].mode): # the same name in tree is dir
-                    raise Exception ("Oops")
-                _stream = stream
-            tree.cache.add (_stream.hexsha, item_mode, item_name, force=True)
+                    raise Exception ("Oops, target path exists and cannot be override")
+                _istream = istream
+            tree.cache.add (_istream.hexsha, item_mode, item_name, force=True)
             entities = tree._cache
         else:
             if len (path_segs) > 1: #dir
-                _stream = self._create_path (repo, None, path_segs[1:], stream)
+                _istream = self._create_path (repo, None, path_segs[1:], istream)
             else: #file
-                _stream = stream
-            entities = [ (_stream.binsha, item_mode, item_name) ]
+                _istream = istream
+            entities = [ (_istream.binsha, item_mode, item_name) ]
         t_stream = self._store_tree (repo, entities)
         return t_stream
             
@@ -334,11 +335,14 @@ class GitStore (object):
             file = self._find_path (commit.tree, filename)
         except Exception, e:
             self._throw_err ("repo '%s' version '%s' cannot get path '%s': %s"  % (repo_name, version, filename, str(e)))
-        if isinstance (file, Object):
-            iostream = file.data_stream
-            buf = iostream.read ()
+        if not isinstance (file, Object):
+            self._throw_err ("repo '%s' version '%s' has no path '%s'" % (repo_name, version, filename))
+        try:
+            ostream = file.data_stream
+            buf = ostream.read ()
             return buf
-        self._throw_err ("repo '%s' branch '%s' has no path '%s'" % (repo_name, branch, filename))
+        except Exception, e:
+            self._throw_err ("repo '%s' version '%s' '%s' read error " % (repo_name, version, filename, str(e)))
 
     def checkout (self, repo_name, version, filename, tempfile):
         """ version may be : HEAD/branch_name/specified_commit
@@ -346,11 +350,16 @@ class GitStore (object):
             """
         assert isinstance (repo_name, str)
         buf = self.read (repo_name, version, filename)
+        file = None
         try:
             file = open (tempfile, "w+")
+        except Exception, e:
+            self._throw_err ("repo '%s' checkout '%s' of version '%s' error: %s" % (repo_name, filename, version, str(e)))
+        try:
             file.write (buf)
             file.close ()
         except Exception, e:
+            file.close ()
             self._throw_err ("repo '%s' checkout '%s' of version '%s' error: %s" % (repo_name, filename, version, str(e)))
 
     def store (self, repo_name, branch, filepath, tempfile):
@@ -365,8 +374,8 @@ class GitStore (object):
         tree_binsha = None
         try:
             path_segs = split_path (filepath)
-            f_stream = self._store_file (repo, tempfile) #store file content
-            t_stream = self._create_path (repo, head.commit.tree, path_segs, f_stream)
+            f_istream = self._store_file (repo, tempfile) #store file content
+            t_stream = self._create_path (repo, head.commit.tree, path_segs, f_istream)
             tree_binsha = t_stream.binsha
         except Exception, e:
             self._throw_err ("cannot store file '%s' into repo '%s': %s" % 
