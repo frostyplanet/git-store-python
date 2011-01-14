@@ -323,17 +323,17 @@ class GitStore (object):
         if version:
             commit = self._get_commit (repo, version)
             if not commit:
-                self._throw_err (" '%s' repo '%s' not exists" % (version, branch, repo_name))
+                self._throw_err (" '%s' repo '%s' not exists" % (repo_name, version))
         else:
             head = self._get_branch (repo, 'master')
             if not head:
-                self._throw_err ("branch '%s' of repo '%s' not exists" % (branch, repo_name))
+                self._throw_err ("version '%s' of repo '%s' not exists" % (version, repo_name))
             commit = head.commit
         file = None
         try:
             file = self._find_path (commit.tree, filename)
         except Exception, e:
-            self._throw_err ("repo '%s' branch '%s' cannot get path '%s': %s"  % (repo_name, branch, filename, str(e)))
+            self._throw_err ("repo '%s' version '%s' cannot get path '%s': %s"  % (repo_name, version, filename, str(e)))
         if isinstance (file, Object):
             iostream = file.data_stream
             buf = iostream.read ()
