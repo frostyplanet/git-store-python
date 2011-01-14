@@ -61,7 +61,7 @@ class GitStore (object):
             self._throw_err ("repo '%s' not found" % (repo_name))
         repo = None
         try:
-            repo = Repo (repo_path)
+            repo = Repo (repo_path, odbt=GitDB)
         except Exception, e:
             self._throw_err ("repo '%s' failed to open: %s" % (repo_name, str (e)))
         return repo
