@@ -1,0 +1,14 @@
+# 2010-02-21 an.ning@aliyun-inc.com 
+# fix repo.commmit(branch_name) bug when branch_name is like '[0-9a-fA-F]{7,40}'
+diff -rupN GitPython-0.3.0-beta2/lib/git/repo/fun.py GitPython-0.3.0-beta2_new/lib/git/repo/fun.py
+--- GitPython-0.3.0-beta2/lib/git/repo/fun.py	2011-02-21 19:55:38.000000000 +0800
++++ GitPython-0.3.0-beta2_new/lib/git/repo/fun.py	2011-02-21 19:56:18.000000000 +0800
+@@ -55,7 +55,7 @@ def name_to_object(repo, name):
+ 		else:
+ 			hexsha = name
+ 		# END handle short shas
+-    else:
++    if hexsha is None:
+ 		for base in ('%s', 'refs/%s', 'refs/tags/%s', 'refs/heads/%s', 'refs/remotes/%s', 'refs/remotes/%s/HEAD'):
+ 			try:
+ 				hexsha = SymbolicReference.dereference_recursive(repo, base % name)
