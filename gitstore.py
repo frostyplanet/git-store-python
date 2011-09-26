@@ -11,6 +11,7 @@ import sys
 import pprint
 from stat import *
 from os.path import dirname, abspath, join
+import fcntl
 
 def split_path (filepath):
     assert filepath
@@ -29,6 +30,8 @@ class GitStore (object):
     _logger = None
     file_mode = 0100644 
     dir_mode = 040000
+    _locker_path = None
+    _locker_dict = None # to hold opened locker file's object
 
     def __init__ (self):
 
@@ -42,6 +45,10 @@ class GitStore (object):
             if 0 != os.system ('mkdir -p "%s"' % (self._base_path)):
                 raise Exception ("cannot initial repo dir in '%s'" % (self._base_path))
         self._logger = Log ("main", config=config, base_path=PWD)
+        self._locker_path = os.path.join (self._base_path, ".locker")
+        if not os.path.exists (self._locker_path):
+            os.makedirs (self._locker_path)
+        self._locker_dict = dict ()
 
     def _throw_err (self, msg):
         assert msg
@@ -194,20 +201,25 @@ class GitStore (object):
         """return hexsha of new repo's head
            """
         assert isinstance (repo_name, str)
+        self.lock_repo (repo_name)
         repo_path = self._get_repo_path (repo_name)
         if os.path.isdir (repo_path):
+            self.unlock_repo (repo_name)
             self._throw_err ("repo '%s' already exists" % (repo_name))
         repo = None
         try:
             repo = Repo.init (repo_path, True, bare=True)
         except Exception, e:
+            self.unlock_repo (repo_name)
             self._throw_err ("repo '%s' create error: %s" % (repo_name, str (e)))
         commit = None
         try:
             ts = self._store_tree (repo, [])
             commit = self._do_commit (repo, repo.head, ts.binsha, "create repo")
         except Exception, e:
+            self.unlock_repo (repo_name)
             self._throw_err ("cannot create a initial commit in '%s': %s" % (repo_name, str (e)))
+        self.unlock_repo (repo_name)
         return commit.hexsha
 
     def create_branch (self, repo_name, new_branch, from_branch='master'):
@@ -216,16 +228,21 @@ class GitStore (object):
         assert isinstance (repo_name, str)
         assert isinstance (new_branch, str)
         repo = self._get_repo (repo_name)
+        self.lock_repo (repo_name)
         _from = self._get_branch (repo, from_branch)
         if not _from:
+            self.unlock_repo (repo_name)
             self._throw_err ("repo '%s' has no branch '%s'" % (repo_name, from_branch))
         if self._get_branch (repo, new_branch):
+            self.unlock_repo (repo_name)
             self._throw_err ("repo '%s' already has branch '%s'" % (repo_name, new_branch))
         head = None
         try:
             head = Head.create (repo, new_branch, repo.branches[from_branch])
         except Exception, e: 
+            self.unlock_repo (repo_name)
             self._throw_err ("repo '%s' cannot create branch '%s' from '%s'" % (repo_name, new_branch, from_branch))
+        self.unlock_repo (repo_name)
         return head.commit.hexsha
 
     def delete_branch (self, repo_name, branch):
@@ -234,14 +251,18 @@ class GitStore (object):
         assert isinstance (repo_name, str)
         assert isinstance (branch, str)
         repo = self._get_repo (repo_name)
+        self.lock_repo (repo_name)
         head = self._get_branch (repo, branch)
         if not head:
+            self.unlock_repo (repo_name)
             self._throw_err ("branch '%s' of repo '%s' not exists" % (branch, repo_name))
         try:
             repo.delete_head(head, force=True)
         except Exception, e:
+            self.unlock_repo (repo_name)
             self._throw_err ("cannot delete '%s' in repo '%s': %s" % 
                     (branch, repo_name, str (e)))
+        self.unlock_repo (repo_name)
 
     def ls_repos (self):
         """return a list of repo_name"""
@@ -368,8 +389,10 @@ class GitStore (object):
         assert isinstance (repo_name, str)
         assert isinstance (branch, str)
         repo = self._get_repo (repo_name)
+        self.lock_repo (repo_name)
         head = self._get_branch (repo, branch)
         if not head:
+            self.unlock_repo (repo_name)
             self._throw_err ("branch '%s' of repo '%s' not exists" % (branch, repo_name))
         tree_binsha = None
         try:
@@ -378,14 +401,35 @@ class GitStore (object):
             t_stream = self._create_path (repo, head.commit.tree, path_segs, f_istream)
             tree_binsha = t_stream.binsha
         except Exception, e:
+            self.unlock_repo (repo_name)
             self._throw_err ("cannot store file '%s' into repo '%s': %s" % 
                     (filepath, repo_name, str (e)))
         commit = None
         try:
             commit = self._do_commit (repo, head, tree_binsha, "store file %s" % (filepath))
         except Exception, e:
+            self.unlock_repo (repo_name)
             self._throw_err ("cannot create a new commit in '%s': %s" % (repo_name, str (e)))
+        self.unlock_repo (repo_name)
         return commit.hexsha
 
+    def lock_repo (self, repo_name):
+        """ the lock created is advisory lock between processes, so it will not be effective between threads """
+        try:
+            f = open (os.path.join (self._locker_path, repo_name), "w")
+        except IOError, e:
+            self._throw_err ("cannot open lock file for %s, %s" % (repo_name, str(e)))
+        self._locker_dict[repo_name] = f
+        try:
+            fcntl.flock (f.fileno (), fcntl.LOCK_EX)
+        except Exception, e:
+            self._throw_err ("cannot create lock for %s, %s" % (repo_name, str(e)))
+        
+    def unlock_repo (self, repo_name):
+        if self._locker_dict.has_key (repo_name):
+            self._locker_dict[repo_name].close ()
+            del self._locker_dict[repo_name]
 
+        
+        
 # vim: set sw=4 ts=4 et :

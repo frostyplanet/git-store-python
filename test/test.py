@@ -11,8 +11,6 @@ sys.setdefaultencoding("utf-8")
 PWD = dirname(abspath(__file__))
 sys.path.append(os.path.join (PWD, ".."))
 
-
-from git import *
 from gitstore import *
 
 def test_repo_create (gs):
