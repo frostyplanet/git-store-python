@@ -1,16 +1,16 @@
 #!/usr/bin/env python
 
-from log import *
-
-from git import *
-from gitdb import *
-from git.objects.fun import *
-from StringIO import *
 import os
 import sys
+from log import Log
+
+from git import Object, Tree, TreeModifier, Repo, Head, HEAD, Commit, BadObject
+from gitdb import GitDB, IStream
+from git.objects.fun import tree_to_stream
+from StringIO import StringIO
 import pprint
-from stat import *
-from os.path import dirname, abspath, join
+import stat
+from os.path import dirname, abspath
 import fcntl
 
 def split_path (filepath):
@@ -30,6 +30,7 @@ class GitStore (object):
     _logger = None
     file_mode = 0100644 
     dir_mode = 040000
+    _locker_dir_name = ".locker"
     _locker_path = None
     _locker_dict = None # to hold opened locker file's object
 
@@ -45,7 +46,7 @@ class GitStore (object):
             if 0 != os.system ('mkdir -p "%s"' % (self._base_path)):
                 raise Exception ("cannot initial repo dir in '%s'" % (self._base_path))
         self._logger = Log ("main", config=config, base_path=PWD)
-        self._locker_path = os.path.join (self._base_path, ".locker")
+        self._locker_path = os.path.join (self._base_path, self._locker_dir_name)
         if not os.path.exists (self._locker_path):
             os.makedirs (self._locker_path)
         self._locker_dict = dict ()
@@ -94,17 +95,18 @@ class GitStore (object):
             pass
         return commit
     
-    def _store_file (self, repo, tempfile):
+    def _store_file (self, repo, fileobj):
         """ return new file's istream
             """
         assert repo
-        assert isinstance (tempfile, str)
-        st = os.stat (tempfile)
-        temp_fp = open (tempfile, 'r')
-        input = IStream ("blob", st.st_size, temp_fp)
-        repo.odb.store (input)
-        temp_fp.close ()
-        return input
+        assert isinstance (fileobj, file) or isinstance (fileobj, StringIO)
+        fileobj.seek (0, 2)
+        size = fileobj.tell ()
+        fileobj.seek (0, 0)
+        
+        istream = IStream ("blob", size, fileobj)
+        repo.odb.store (istream)
+        return istream
 
     def _store_tree (self, repo, entities):
         """return tree's istream
@@ -119,41 +121,119 @@ class GitStore (object):
         sio.close ()
         return t_stream
 
-    def _create_path (self, repo, tree, path_segs, istream, is_file=True):
-        assert repo
+    def _create_path (self, repo, tree, path_segs, fileobj, is_file=True, replace_file=True):
+        """ a recursive function.
+            if is_file is True, fileobj a opened python file object or StringIO object contains content to write  
+               if replace_file is False, will raise Exception when file already present.
+                   replace_file only effective when is_file is True,
+            if is_file is False, fileobj must be None, and will return None when directory path already exists
+                 """
+        # a recursive function
+        assert repo is not None
         assert isinstance (path_segs, list)
-        assert isinstance (istream, IStream)
+        assert not is_file or fileobj is not None
         item_name = path_segs[0]
         item_mode = None
         _istream = None
         entities = None
-        if len (path_segs) > 1 or not is_file: #dir
-            item_mode = self.dir_mode
-        else:
-            item_mode = self.file_mode
         if isinstance (tree, Tree):
-            if len (path_segs) > 1: #dir
-                if item_name in tree:
-                    if not S_ISDIR (tree[item_name].mode): raise Exception ("Oops, target path exists and cannot be override") 
-                    #the same name in tree is not dir
-                    _istream = self._create_path (repo, tree[item_name], path_segs[1:], istream)
+            item = None
+            try:
+                item = tree[item_name]
+            except KeyError:
+                pass
+            if len (path_segs) > 1: # need to step into sub directory
+                if item is not None:
+                    item_mode = item.mode
+                    if not stat.S_ISDIR (item_mode):
+                        raise Exception ("Oops, '%s' is a file blocking path creation")
                 else:
-                    _istream = self._create_path (repo, None, path_segs[1:], istream)
-            else: #file
-                if item_name in tree and not S_ISREG (tree[item_name].mode): # the same name in tree is dir
-                    raise Exception ("Oops, target path exists and cannot be override")
-                _istream = istream
-            tree.cache.add (_istream.hexsha, item_mode, item_name, force=True)
+                    item_mode = self.dir_mode
+                _istream = self._create_path (repo, item, path_segs[1:], fileobj, is_file, replace_file)
+                if _istream is None:
+                    return None
+            else: 
+                if item is not None:
+                    item_mode = item.mode
+                    if is_file:
+                        if stat.S_ISDIR (item_mode):
+                            raise Exception ("Oops, target path exists but is a directory")
+                        if not replace_file:
+                            raise Exception ("target path already exists")
+                    else:
+                        if stat.S_ISREG (item_mode): 
+                            raise Exception ("Oops, target path exists but is not a directory")
+                        return None
+                else:
+                    if is_file:
+                        item_mode = self.file_mode
+                    else:
+                        item_mode = self.dir_mode
+                    # path already exists, do some checking
+                if is_file:
+                    _istream = self._store_file (repo, fileobj) #store file content
+                    if item is not None:
+                        if _istream.hexsha == item.hexsha:
+                            return None #  already has the same file
+                else: 
+                    _istream = self._store_tree (repo, []) # create empty directory
+            # add tree-item to its parent
+            assert _istream is not None
+            tm = tree.cache
+            tm.add (_istream.hexsha, item_mode, item_name, force=True)
+            tm.set_done ()
             entities = tree._cache
         else:
-            if len (path_segs) > 1: #dir
-                _istream = self._create_path (repo, None, path_segs[1:], istream)
-            else: #file
-                _istream = istream
+            if len (path_segs) > 1: # need to create sub-directory structure
+                _istream = self._create_path (repo, None, path_segs[1:], fileobj, is_file, replace_file)
+                item_mode = self.dir_mode
+            else: 
+                if is_file:
+                    _istream = self._store_file (repo, fileobj) #store file content
+                    item_mode = self.file_mode
+                else: 
+                    _istream = self._store_tree (repo, []) # create empty directory
+                    item_mode = self.dir_mode
+            assert _istream is not None
             entities = [ (_istream.binsha, item_mode, item_name) ]
         t_stream = self._store_tree (repo, entities)
         return t_stream
-            
+
+    def _delete_path (self, repo, tree, path_segs):
+        # a recursive function
+        assert repo is not None
+        assert isinstance (path_segs, list)
+        assert isinstance (tree, Tree)
+        assert path_segs
+        item_name = path_segs[0]
+        _istream = None
+        entities = None
+        try:
+            item = tree[item_name]
+        except KeyError:
+            return None
+        if len (path_segs) > 1: # need to recurse down to sub directory
+            _istream = self._delete_path (repo, item, path_segs[1:])
+            if _istream is None:
+                return None
+            tm = tree.cache
+            tm.add (_istream.hexsha, item.mode, item_name, force=True)
+            tm.set_done ()
+            entities = tree._cache
+        else: # len (path_segs) == 1
+            # delete tree-item from its parent, so we copy all entities except the one we want to delete
+            entities = []
+            for b in tree.blobs:
+                if b.name == item_name: 
+                    continue
+                entities.append ((b.binsha, b.mode, b.name,))
+            for t in tree.trees:
+                if t.name == item_name:
+                    continue
+                entities.append ((t.binsha, t.mode, t.name,))
+        t_stream = self._store_tree (repo, entities)
+        return t_stream
+          
 
     def _do_commit (self, repo, head, tree_binsha, msg, parent=None):
         """ return new commit's hexsha, on error return None and output error
@@ -176,7 +256,10 @@ class GitStore (object):
         result = []
         for t in tree.trees:
             _result = self._ls_dir (repo, t, os.path.join (basepath, t.name))
-            result.extend (_result)
+            if _result:
+                result.extend (_result)
+            else:
+                result.append (basepath.rstrip ("/") + "/")
         for b in tree.blobs:
             result.append (os.path.join (basepath, b.name))
         return result
@@ -241,7 +324,7 @@ class GitStore (object):
             head = Head.create (repo, new_branch, repo.branches[from_branch])
         except Exception, e: 
             self.unlock_repo (repo_name)
-            self._throw_err ("repo '%s' cannot create branch '%s' from '%s'" % (repo_name, new_branch, from_branch))
+            self._throw_err ("repo '%s' cannot create branch '%s' from '%s', %s" % (repo_name, new_branch, from_branch, str(e)))
         self.unlock_repo (repo_name)
         return head.commit.hexsha
 
@@ -266,7 +349,10 @@ class GitStore (object):
 
     def ls_repos (self):
         """return a list of repo_name"""
-        return os.listdir (self._base_path)
+        l = os.listdir (self._base_path)
+        if self._locker_dir_name in l:
+            l.remove (self._locker_dir_name)
+        return l
     
     def ls_branches (self, repo_name):
         """return a dict, containing echo branch and its head commit hexSHA
@@ -275,7 +361,7 @@ class GitStore (object):
         repo = self._get_repo (repo_name)
         result = dict ()
         for _branch in repo.branches:
-             result[str(_branch)] = _branch.commit.hexsha
+            result[str(_branch)] = _branch.commit.hexsha
         return result
 
     def ls_head(self, repo_name, branch):
@@ -294,7 +380,6 @@ class GitStore (object):
         assert isinstance (repo_name, str)
         assert isinstance (version, str)
         result = list ()
-        stack = list ()
         repo = self._get_repo (repo_name) 
         commit = self._get_commit (repo, version)
         if not isinstance (commit, Object):
@@ -351,19 +436,19 @@ class GitStore (object):
             if not head:
                 self._throw_err ("version '%s' of repo '%s' not exists" % (version, repo_name))
             commit = head.commit
-        file = None
+        f = None
         try:
-            file = self._find_path (commit.tree, filename)
+            f = self._find_path (commit.tree, filename)
         except Exception, e:
             self._throw_err ("repo '%s' version '%s' cannot get path '%s': %s"  % (repo_name, version, filename, str(e)))
-        if not isinstance (file, Object):
+        if not isinstance (f, Object):
             self._throw_err ("repo '%s' version '%s' has no path '%s'" % (repo_name, version, filename))
         try:
-            ostream = file.data_stream
+            ostream = f.data_stream
             buf = ostream.read ()
             return buf
         except Exception, e:
-            self._throw_err ("repo '%s' version '%s' '%s' read error " % (repo_name, version, filename, str(e)))
+            self._throw_err ("repo '%s' version '%s' '%s' read error, %s" % (repo_name, version, filename, str(e)))
 
     def checkout (self, repo_name, version, filename, tempfile):
         """ version may be : HEAD/branch_name/specified_commit
@@ -371,23 +456,81 @@ class GitStore (object):
             """
         assert isinstance (repo_name, str)
         buf = self.read (repo_name, version, filename)
-        file = None
+        f = None
         try:
-            file = open (tempfile, "w+")
+            f = open (tempfile, "w+")
         except Exception, e:
             self._throw_err ("repo '%s' checkout '%s' of version '%s' error: %s" % (repo_name, filename, version, str(e)))
         try:
-            file.write (buf)
-            file.close ()
+            f.write (buf)
+            f.close ()
         except Exception, e:
-            file.close ()
+            f.close ()
             self._throw_err ("repo '%s' checkout '%s' of version '%s' error: %s" % (repo_name, filename, version, str(e)))
 
-    def store (self, repo_name, branch, filepath, tempfile):
-        """ return new commit version after store a file
+    def _latest_commit (self, repo, branch, filepath):
+        _iter = repo.iter_commits (branch, filepath)
+        try:
+            cur_version = _iter.next ()
+            return cur_version
+        except StopIteration:
+            return None
+
+    def get_latest_commit (self, repo_name, branch, filepath):
+        assert isinstance (repo_name, basestring)
+        assert isinstance (branch, basestring)
+        repo = self._get_repo (repo_name)
+        _commit = self._latest_commit (repo, branch, filepath)
+        return _commit.hexsha
+            
+    def store (self, repo_name, branch, path, fileobj, expect_latest_version=None):
+        """ 
+            fileobj is file like object or StringIO object, contain the content to be writen, you will need to close it youself alfterware.
+            expect_latest_version: empty string '' means only store into the branch when no such a file in it , 
+                    non-empty string means only store into the branch when the file's latest version match,
+                    None means always replace.
+            return new commit version after store a file, if the file is the same with the branch's head, return None
             """
-        assert isinstance (repo_name, str)
-        assert isinstance (branch, str)
+        assert isinstance (repo_name, basestring)
+        assert isinstance (branch, basestring)
+        assert fileobj
+        repo = self._get_repo (repo_name)
+        self.lock_repo (repo_name)
+        head = self._get_branch (repo, branch)
+        if not head:
+            self.unlock_repo (repo_name)
+            self._throw_err ("branch '%s' of repo '%s' not exists" % (branch, repo_name))
+        if expect_latest_version:
+            _cur_commit = self._latest_commit (repo, branch, path)
+            if _cur_commit is None:
+                self._throw_err ("file has no history, maybe the repo is corrupted")
+            if _cur_commit.hexsha != expect_latest_version:
+                self.unlock_repo (repo_name)
+                self._throw_err ("file has been update by others, new version is %s" % (_cur_commit.hexsha))
+        tree_binsha = None
+        try:
+            path_segs = split_path (path)
+            t_stream = self._create_path (repo, head.commit.tree, path_segs, fileobj, is_file=True, replace_file=(expect_latest_version != ''))
+            if t_stream is None: # file is the same with branch HEAD
+                self.unlock_repo (repo_name)
+                return None
+            tree_binsha = t_stream.binsha
+        except Exception, e:
+            self.unlock_repo (repo_name)
+            self._throw_err ("cannot store file '%s' into repo '%s': %s" % 
+                    (path, repo_name, str (e)))
+        commit = None
+        try:
+            commit = self._do_commit (repo, head, tree_binsha, "store file %s" % (path))
+        except Exception, e:
+            self.unlock_repo (repo_name)
+            self._throw_err ("cannot create a new commit in '%s': %s" % (repo_name, str (e)))
+        self.unlock_repo (repo_name)
+        return commit.hexsha
+
+    def mkdir (self, repo_name, branch, path):
+        assert isinstance (repo_name, basestring)
+        assert isinstance (branch, basestring)
         repo = self._get_repo (repo_name)
         self.lock_repo (repo_name)
         head = self._get_branch (repo, branch)
@@ -396,22 +539,57 @@ class GitStore (object):
             self._throw_err ("branch '%s' of repo '%s' not exists" % (branch, repo_name))
         tree_binsha = None
         try:
-            path_segs = split_path (filepath)
-            f_istream = self._store_file (repo, tempfile) #store file content
-            t_stream = self._create_path (repo, head.commit.tree, path_segs, f_istream)
+            path_segs = split_path (path)
+            t_stream = self._create_path (repo, head.commit.tree, path_segs, None, is_file=False)
+            if not t_stream:
+                self.unlock_repo (repo_name)
+                return None
             tree_binsha = t_stream.binsha
         except Exception, e:
             self.unlock_repo (repo_name)
-            self._throw_err ("cannot store file '%s' into repo '%s': %s" % 
-                    (filepath, repo_name, str (e)))
+            self._throw_err ("cannot mkdir '%s' into repo '%s': %s" % 
+                    (path, repo_name, str (e)))
+
         commit = None
         try:
-            commit = self._do_commit (repo, head, tree_binsha, "store file %s" % (filepath))
+            commit = self._do_commit (repo, head, tree_binsha, "mkdir %s" % (path))
         except Exception, e:
             self.unlock_repo (repo_name)
             self._throw_err ("cannot create a new commit in '%s': %s" % (repo_name, str (e)))
         self.unlock_repo (repo_name)
         return commit.hexsha
+
+
+    def delete (self, repo_name, branch, path):
+        """ if deleted the path, return new commit hexsha. if the path is not existing , return None  """
+        assert isinstance (repo_name, basestring)
+        assert isinstance (branch, basestring)
+        repo = self._get_repo (repo_name)
+        self.lock_repo (repo_name)
+        head = self._get_branch (repo, branch)
+        if not head:
+            self.unlock_repo (repo_name)
+            self._throw_err ("branch '%s' of repo '%s' not exists" % (branch, repo_name))
+        tree_binsha = None
+        try:
+            path_segs = split_path (path)
+            _istream = self._delete_path (repo, head.commit.tree, path_segs)
+            if _istream is None:
+                self.unlock_repo (repo_name)
+                return None
+            tree_binsha = _istream.binsha
+        except Exception, e:
+            self.unlock_repo (repo_name)
+            self._throw_err ("cannot delete '%s' from repo '%s' ref '%s': %s" % 
+                    (path, repo_name, branch, str (e)))
+        try:
+            commit = self._do_commit (repo, head, tree_binsha, "delete %s" % (path))
+        except Exception, e:
+            self.unlock_repo (repo_name)
+            self._throw_err ("cannot create a new commit in '%s': %s" % (repo_name, str (e)))
+        self.unlock_repo (repo_name)
+        return commit.hexsha
+
 
     def lock_repo (self, repo_name):
         """ the lock created is advisory lock between processes, so it will not be effective between threads """

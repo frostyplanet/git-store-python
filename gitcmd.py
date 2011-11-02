@@ -53,7 +53,28 @@ def checkout (args):
 
 def store (args):
     gs = GitStore ()
-    print gs.store (*args)
+    expect_latest_version = None
+    (repo_name, branch_name, path, temppath) = args[0:4]
+    if len (args) == 5:
+        expect_latest_version = args[4]
+    f = open (temppath, "r")
+    try:
+        print gs.store (repo_name, branch_name, path, f, expect_latest_version)
+    finally:
+        f.close ()
+
+def mkdir (args):
+    gs = GitStore ()
+    print gs.mkdir (*args)
+
+def delete (args):
+    gs = GitStore ()
+    print gs.delete (*args)
+
+def get_last_commit (args):
+    gs = GitStore ()
+    print gs.get_last_commit (*args)
+
 
 def commitlog (args):
     gs = GitStore ()
@@ -117,6 +138,10 @@ g_cmds = {
         'handle':read,
         'args': ['repo_name', 'revision', 'filepath'],
     },
+    'get_last_commit': {
+        'handle': get_last_commit,
+        'args': ['repo_name', 'branch', 'path'],
+    },
     'checkout': {
         'handle':checkout,
         'args': ['repo_name', 'revision', 'filepath', 'tempfile'],
@@ -124,6 +149,15 @@ g_cmds = {
     'store': {
         'handle':store,
         'args': ['repo_name', 'branch', 'filepath', 'tempfile'],
+        'optional_args' : ['expect_cur_version']
+    },
+    'mkdir': {
+        'handle':mkdir,
+        'args': ['repo_name', 'branch', 'path']
+    },
+    'delete' : {
+        'handle':delete, 
+        'args': ['repo_name', 'branch', 'path']
     },
     'log': {
         'handle':commitlog,
