@@ -14,6 +14,7 @@ from os.path import dirname, abspath
 import fcntl
 
 def split_path (filepath):
+    #TODO : check against invalid path
     assert filepath
     path_segs = []
     _head = filepath
@@ -67,12 +68,11 @@ class GitStore (object):
         repo_path = self._get_repo_path (repo_name)
         if not os.path.isdir (repo_path):
             self._throw_err ("repo '%s' not found" % (repo_name))
-        repo = None
         try:
             repo = Repo (repo_path, odbt=GitDB)
+            return repo
         except Exception, e:
             self._throw_err ("repo '%s' failed to open: %s" % (repo_name, str (e)))
-        return repo
 
     def _get_branch (self, repo, branch_name):
         """ return branch's git.Object.ref

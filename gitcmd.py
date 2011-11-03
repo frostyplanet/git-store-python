@@ -71,9 +71,9 @@ def delete (args):
     gs = GitStore ()
     print gs.delete (*args)
 
-def get_last_commit (args):
+def get_latest_commit (args):
     gs = GitStore ()
-    print gs.get_last_commit (*args)
+    print gs.get_latest_commit (*args)
 
 
 def commitlog (args):
@@ -138,8 +138,8 @@ g_cmds = {
         'handle':read,
         'args': ['repo_name', 'revision', 'filepath'],
     },
-    'get_last_commit': {
-        'handle': get_last_commit,
+    'get_latest_commit': {
+        'handle': get_latest_commit,
         'args': ['repo_name', 'branch', 'path'],
     },
     'checkout': {

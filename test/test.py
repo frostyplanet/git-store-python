@@ -53,6 +53,54 @@ class TestGitStore (unittest.TestCase):
             f.close()
         return commit
 
+    def _expect_error (self, func, *args):
+        assert callable (func)
+        try:
+            func (*args)
+            self.fail ("expect exception, but get nonthing")
+        except Exception, e:
+            print "catch expect exception", str(e)
+
+    def test_banch_patch (self):
+        """ see pkgs/get_commit_from_branch_name_bug.patch """
+        master_head = self.gs.create_repo ("unit_test")
+        self.assert_ (master_head)
+        self.assert_ (self.gs.create_branch ("unit_test", "aaa"))
+
+    def test_exceptions (self):
+        self._expect_error (self.gs.create_branch, "unit_test", "aaa")
+        self._expect_error (self.gs.delete_branch, "unit_test", "aaa")
+        self._expect_error (self.gs.ls_branches, "unit_test")
+        self._expect_error (self.gs.ls_head, "unit_test", "aaa")
+        self._expect_error (self.gs.ls, "unit_test", "aaa")
+        self._expect_error (self.gs.read, "unit_test", "aaa", "haha")
+        self._expect_error (self.gs.get_latest_commit, "unit_test", "aaa", "haha")
+        self._expect_error (self.gs.checkout, "unit_test", "aaa", "haha", "/tmp")
+        self._expect_error (self.store, "unit_test", "aaa", "haha", "test/test_file")
+        self._expect_error (self.gs.mkdir, "unit_test", "aaa", "test")
+        self._expect_error (self.gs.delete, "unit_test", "aaa", "test")
+        master_head = self.gs.create_repo ("unit_test")
+        self._expect_error (self.gs.delete_branch, "unit_test", "aaa")
+        self._expect_error (self.gs.ls_head, "unit_test", "aaa")
+        self._expect_error (self.gs.ls, "unit_test", "aaa")
+        self._expect_error (self.gs.read, "unit_test", "aaa", "haha")
+        self._expect_error (self.gs.read, "unit_test", "master", "haha")
+        self._expect_error (self.gs.get_latest_commit, "unit_test", "aaa", "haha")
+        self._expect_error (self.gs.get_latest_commit, "unit_test", "master", "haha")
+        self._expect_error (self.gs.checkout, "unit_test", "aaa", "haha", "/tmp")
+        self._expect_error (self.gs.checkout, "unit_test", "master", "haha", "/tmp")
+        self._expect_error (self.store, "unit_test", "aaa", "haha", "test/test_file")
+        self._expect_error (self.gs.mkdir, "unit_test", "aaa", "test")
+        self._expect_error (self.gs.delete, "unit_test", "aaa", "test")
+        
+    
+    def test_repo (self):
+        self.assertEqual (self.gs.ls_repos (), [])
+        self.assert_ (self.gs.create_repo ("unit_test"))
+        self.assertEqual (self.gs.ls_repos (), ["unit_test"])
+
+
+
     def test_repo_branch (self):
         print "test repo create:"
         master_head = self.gs.create_repo ("unit_test")
@@ -108,9 +156,6 @@ class TestGitStore (unittest.TestCase):
 
     def test_store_file_and_directory (self):
         master_head = self.gs.create_repo ("unit_test")
-        repo = self.gs._get_repo ("unit_test")
-        self.assert_ (repo)
-        assert repo
         v1 = self.store ("unit_test", "master", "haha/test/file", "test/test_file")
         self.assert_ (v1)
         self.assertEqual (self.gs.ls ("unit_test", "master"), ["haha/test/file"])
@@ -132,23 +177,14 @@ class TestGitStore (unittest.TestCase):
         print "* test mkdir"
         v3 = self.gs.mkdir ("unit_test", "master", "haha/test2")
         print self.gs.ls ("unit_test", "master")
+
         print "* test mkdir on a existing path"
-        try:
-            self.gs.mkdir ("unit_test", "master", "haha/test/file")
-            self.fail ("expect exception, but get nonthing")
-        except Exception, e:
-            print "catch expect exception", str(e)
-        try:
-            self.gs.mkdir ("unit_test", "master", "haha/test/file/file")
-            self.fail ("expect exception, but get nonthing")
-        except Exception, e:
-            print "catch expect exception", str(e)
+
+        self._expect_error (self.gs.mkdir, "unit_test", "master", "haha/test/file")
+        self._expect_error (self.gs.mkdir, "unit_test", "master", "haha/test/file/file")
+
         print "* test store file block by a existing directory"
-        try:
-            self.store ("unit_test", "master", "haha/test2", "test/test_file")
-            self.fail ("expect exception, but get nonthing")
-        except Exception, e:
-            print "catch expect exception", str(e)
+        self._expect_error (self.store, "unit_test", "master", "haha/test2", "test/test_file")
 
     def test_version_checking_when_store (self):
         master_head = self.gs.create_repo ("unit_test")
@@ -174,11 +210,9 @@ class TestGitStore (unittest.TestCase):
         print "* test version checking, should raise Exception"
         si = StringIO ()
         si.write ("asdfsdf what ever")
-        try:
-            self.gs.store ("unit_test", "master", "haha/file", si, expect_latest_version=v1)
-            self.fail ("expect exception, but get nonthing")
-        except Exception, e:
-            print "catch expect exception", str(e)
+
+        self._expect_error (self.gs.store, "unit_test", "master", "haha/file", si, v1)
+        si.close ()
 
     def test_delete (self):
         master_head = self.gs.create_repo ("unit_test")
@@ -212,10 +246,11 @@ class TestGitStore (unittest.TestCase):
         self.assert_ (not b4)
         self.assertEqual (self.gs.ls ("unit_test", "master"), ["file4"])
 
-        
-
 
 if __name__ == '__main__':
-    unittest.main ()
+     if sys.version_info >= (2, 7):
+         unittest.main (failfast=True)
+     else:
+         unittest.main ()
 
 # vim: set sw=4 ts=4 et :
