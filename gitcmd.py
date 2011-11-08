@@ -1,10 +1,9 @@
 #!/usr/bin/env python
 
 import sys
-import string
 import os
-from gitstore import *
-from getopt import *
+from gitstore import GitStore
+#from getopt import *
 import traceback
 
 def create_repo (args):
@@ -51,7 +50,7 @@ def checkout (args):
     gs = GitStore ()
     gs.checkout (*args) 
 
-def store (args):
+def store_file (args):
     gs = GitStore ()
     expect_latest_version = None
     (repo_name, branch_name, path, temppath) = args[0:4]
@@ -59,7 +58,7 @@ def store (args):
         expect_latest_version = args[4]
     f = open (temppath, "r")
     try:
-        print gs.store (repo_name, branch_name, path, f, expect_latest_version)
+        print gs.store_file (repo_name, branch_name, path, f, expect_latest_version)
     finally:
         f.close ()
 
@@ -146,8 +145,8 @@ g_cmds = {
         'handle':checkout,
         'args': ['repo_name', 'revision', 'filepath', 'tempfile'],
     },
-    'store': {
-        'handle':store,
+    'store_file': {
+        'handle':store_file,
         'args': ['repo_name', 'branch', 'filepath', 'tempfile'],
         'optional_args' : ['expect_cur_version']
     },
@@ -174,11 +173,11 @@ def _print_cmd_help (cmd, slot):
             sys.stdout.write (" [%s]" % a)
         if slot.has_key ('optional_args'):
             sys.stdout.write (" [ ")
-            sys.stdout.write (string.join (map (lambda x: '['+x+']', slot['optional_args']), ' '))
+            sys.stdout.write (' '.join (map (lambda x: '['+x+']', slot['optional_args'])))
             sys.stdout.write (" ]")
     sys.stdout.write ("\n")
 
-def help (cmd=None):
+def usage (cmd=None):
     global g_cmds
     if cmd: 
         if g_cmds.has_key (cmd):
@@ -196,43 +195,48 @@ def help (cmd=None):
 def call_cmd (cmd, args):
     global g_cmds
     if not g_cmds.has_key (cmd) or not callable(g_cmds[cmd]['handle']):
-        print >>sys.stderr, "unknown cmd '%s'\n" % (cmd)
+        print >> sys.stderr, "unknown cmd '%s'\n" % (cmd)
         sys.exit (1)
     slot = g_cmds[cmd]
-    min = 0
+    _min = 0
     if slot.has_key ('args'):
-        min = len (slot['args'])
-    max = min
+        _min = len (slot['args'])
+    _max = _min
     if slot.has_key ('optional_args'):
-        max += max + len (slot['optional_args'])
-    if len (args) < min:
-        print >>sys.stderr, "param less than %d" % min
+        _max += _max + len (slot['optional_args'])
+    if len (args) < _min:
+        print >> sys.stderr, "param less than %d" % _min
         sys.exit (1)
-    elif len(args) > max:
-        print >>sys.stderr, "param can have %d most" % max
+    elif len(args) > _max:
+        print >> sys.stderr, "param can have %d most" % _max
         sys.exit (1)
     try:
         slot['handle'] (args)
     except Exception, e:
-        print >>sys.stderr, "error, %s" % str(e)
+        print >> sys.stderr, "error, %s" % str(e)
 #        traceback.print_exc()
         sys.exit (1)
     sys.exit (0)
 
 
-if __name__ == '__main__':
+def main ():
     args = sys.argv
     if len(args) > 1:
         cmd = args[1]
         if cmd.find ('help') != -1:
             if len(args)>2:
-                help (args[2])
+                usage (args[2])
             else:
-                help (None)
+                usage (None)
         else:
             call_cmd (cmd, args[2:])
     else:
-        help ()
+        usage ()
         sys.exit (1)
+
+
+
+if __name__ == '__main__':
+    main ()
 
 # vim: set sw=4 ts=4 et :

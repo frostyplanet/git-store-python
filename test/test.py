@@ -4,6 +4,7 @@ import os
 import sys
 import string
 import re
+import time
 from os.path import dirname, abspath, join
 import unittest
 
@@ -48,7 +49,7 @@ class TestGitStore (unittest.TestCase):
         f = open (temppath, "r")
         commit = None
         try:
-            commit = self.gs.store (repo_name, branch_name, path, f, expect_latest_version)
+            commit = self.gs.store_file (repo_name, branch_name, path, f, expect_latest_version)
         finally:
             f.close()
         return commit
@@ -92,13 +93,12 @@ class TestGitStore (unittest.TestCase):
         self._expect_error (self.store, "unit_test", "aaa", "haha", "test/test_file")
         self._expect_error (self.gs.mkdir, "unit_test", "aaa", "test")
         self._expect_error (self.gs.delete, "unit_test", "aaa", "test")
-        
+
     
-    def test_repo (self):
+    def test_ls_repo (self):
         self.assertEqual (self.gs.ls_repos (), [])
         self.assert_ (self.gs.create_repo ("unit_test"))
         self.assertEqual (self.gs.ls_repos (), ["unit_test"])
-
 
 
     def test_repo_branch (self):
@@ -245,6 +245,26 @@ class TestGitStore (unittest.TestCase):
         b4 = self.gs.delete ("unit_test", "b1", "file3")
         self.assert_ (not b4)
         self.assertEqual (self.gs.ls ("unit_test", "master"), ["file4"])
+
+    def test_lock_file (self):
+        self.gs = GitStore (need_lock="file")
+        pid1 = os.fork ()
+        if not pid1:
+            time.sleep (2)
+            self.gs.lock_repo ("test")
+            time.sleep (1)
+            self.gs.unlock_repo ("test")
+            os._exit (0)
+        pid2 = os.fork ()
+        if not pid2:
+            self.gs.lock_repo ("test")
+            time.sleep (5)
+            self.gs.unlock_repo ("test")
+            os._exit (0)
+        (_pid1, status) = os.wait ()
+        (_pid2, status) = os.wait ()
+        self.assertEqual (_pid1, pid2)
+        self.assertEqual (_pid2, pid1)
 
 
 if __name__ == '__main__':

@@ -35,8 +35,9 @@ class GitStore (object):
     _locker_path = None
     _locker_dict = None # to hold opened locker file's object
 
-    def __init__ (self):
-
+    def __init__ (self, need_lock=None):
+        """ need_lock == 'file', create lockfile and use flock to prevent concurrent write,
+        """
         import config
         if not 'repo_basepath' in dir(config):
             raise Exception ("repo_basepath not found in config")
@@ -47,10 +48,19 @@ class GitStore (object):
             if 0 != os.system ('mkdir -p "%s"' % (self._base_path)):
                 raise Exception ("cannot initial repo dir in '%s'" % (self._base_path))
         self._logger = Log ("main", config=config, base_path=PWD)
-        self._locker_path = os.path.join (self._base_path, self._locker_dir_name)
-        if not os.path.exists (self._locker_path):
-            os.makedirs (self._locker_path)
-        self._locker_dict = dict ()
+        if need_lock == 'file':
+            self._locker_path = os.path.join (self._base_path, self._locker_dir_name)
+            if not os.path.exists (self._locker_path):
+                os.makedirs (self._locker_path)
+            self._locker_dict = dict ()
+            self.lock_repo = self._lock_repo_file
+            self.unlock_repo = self._unlock_repo_file
+        else:
+            self.lock_repo = self._fake_func
+            self.unlock_repo = self._fake_func
+
+    def _fake_func (self, *args):
+        pass
 
     def _throw_err (self, msg):
         assert msg
@@ -280,7 +290,7 @@ class GitStore (object):
             return self._find_path (sub_tree, str.join("/", path_segs[1:]))
         return None
 
-    def create_repo (self, repo_name):
+    def create_repo (self, repo_name, msg=None):
         """return hexsha of new repo's head
            """
         assert isinstance (repo_name, str)
@@ -298,7 +308,10 @@ class GitStore (object):
         commit = None
         try:
             ts = self._store_tree (repo, [])
-            commit = self._do_commit (repo, repo.head, ts.binsha, "create repo")
+            commit_msg = "create repo"
+            if msg:
+                commit_msg += ", %s" % (msg)
+            commit = self._do_commit (repo, repo.head, ts.binsha, commit_msg)
         except Exception, e:
             self.unlock_repo (repo_name)
             self._throw_err ("cannot create a initial commit in '%s': %s" % (repo_name, str (e)))
@@ -482,8 +495,17 @@ class GitStore (object):
         repo = self._get_repo (repo_name)
         _commit = self._latest_commit (repo, branch, filepath)
         return _commit.hexsha
+
+    def store (self, repo_name, branch, path, content, expect_latest_version=None, msg=None):
+        si = StringIO (content)
+        val = None
+        try:
+            val = self.store_file (repo_name, branch, path, si, expect_latest_version=expect_latest_version, msg=msg)
+        finally:
+            si.close ()
+        return val
             
-    def store (self, repo_name, branch, path, fileobj, expect_latest_version=None):
+    def store_file (self, repo_name, branch, path, fileobj, expect_latest_version=None, msg=None):
         """ 
             fileobj is file like object or StringIO object, contain the content to be writen, you will need to close it youself alfterware.
             expect_latest_version: empty string '' means only store into the branch when no such a file in it , 
@@ -503,6 +525,7 @@ class GitStore (object):
         if expect_latest_version:
             _cur_commit = self._latest_commit (repo, branch, path)
             if _cur_commit is None:
+                self.unlock_repo (repo_name)
                 self._throw_err ("file has no history, maybe the repo is corrupted")
             if _cur_commit.hexsha != expect_latest_version:
                 self.unlock_repo (repo_name)
@@ -521,14 +544,17 @@ class GitStore (object):
                     (path, repo_name, str (e)))
         commit = None
         try:
-            commit = self._do_commit (repo, head, tree_binsha, "store file %s" % (path))
+            commit_msg = "store file %s" % (path)
+            if msg:
+                commit_msg += ", %s" % (msg)
+            commit = self._do_commit (repo, head, tree_binsha, commit_msg)
         except Exception, e:
             self.unlock_repo (repo_name)
             self._throw_err ("cannot create a new commit in '%s': %s" % (repo_name, str (e)))
         self.unlock_repo (repo_name)
         return commit.hexsha
 
-    def mkdir (self, repo_name, branch, path):
+    def mkdir (self, repo_name, branch, path, msg=None):
         assert isinstance (repo_name, basestring)
         assert isinstance (branch, basestring)
         repo = self._get_repo (repo_name)
@@ -552,7 +578,10 @@ class GitStore (object):
 
         commit = None
         try:
-            commit = self._do_commit (repo, head, tree_binsha, "mkdir %s" % (path))
+            commit_msg = "mkdir %s" % (path)
+            if msg:
+                commit_msg += ", %s" % (msg)
+            commit = self._do_commit (repo, head, tree_binsha, commit_msg)
         except Exception, e:
             self.unlock_repo (repo_name)
             self._throw_err ("cannot create a new commit in '%s': %s" % (repo_name, str (e)))
@@ -560,7 +589,7 @@ class GitStore (object):
         return commit.hexsha
 
 
-    def delete (self, repo_name, branch, path):
+    def delete (self, repo_name, branch, path, msg=None):
         """ if deleted the path, return new commit hexsha. if the path is not existing , return None  """
         assert isinstance (repo_name, basestring)
         assert isinstance (branch, basestring)
@@ -583,7 +612,10 @@ class GitStore (object):
             self._throw_err ("cannot delete '%s' from repo '%s' ref '%s': %s" % 
                     (path, repo_name, branch, str (e)))
         try:
-            commit = self._do_commit (repo, head, tree_binsha, "delete %s" % (path))
+            commit_msg = "delete %s" % (path)
+            if msg:
+                commit_msg += ", %s" % (msg)
+            commit = self._do_commit (repo, head, tree_binsha, commit_msg)
         except Exception, e:
             self.unlock_repo (repo_name)
             self._throw_err ("cannot create a new commit in '%s': %s" % (repo_name, str (e)))
@@ -591,7 +623,7 @@ class GitStore (object):
         return commit.hexsha
 
 
-    def lock_repo (self, repo_name):
+    def _lock_repo_file (self, repo_name):
         """ the lock created is advisory lock between processes, so it will not be effective between threads """
         try:
             f = open (os.path.join (self._locker_path, repo_name), "w")
@@ -603,7 +635,7 @@ class GitStore (object):
         except Exception, e:
             self._throw_err ("cannot create lock for %s, %s" % (repo_name, str(e)))
         
-    def unlock_repo (self, repo_name):
+    def _unlock_repo_file (self, repo_name):
         if self._locker_dict.has_key (repo_name):
             self._locker_dict[repo_name].close ()
             del self._locker_dict[repo_name]
