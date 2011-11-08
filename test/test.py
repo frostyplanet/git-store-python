@@ -31,7 +31,7 @@ class TestGitStore (unittest.TestCase):
     def setUp (self):
         self.gs = GitStore ()
         if config.repo_basepath:
-            os.system ("rm -rvf %s/*" % (config.repo_basepath))
+            os.system ("rm -rf %s/*" % (config.repo_basepath))
 
 
     def _checkout (self, repo_name, version, filepath, orgfile):
@@ -103,47 +103,62 @@ class TestGitStore (unittest.TestCase):
 
     def test_repo_branch (self):
         print "test repo create:"
-        master_head = self.gs.create_repo ("unit_test")
+        master_v1 = self.gs.create_repo ("unit_test")
+        self.assert_ (master_v1)
         repo = self.gs._get_repo ("unit_test")
-        assert repo
+        self.assert_ (repo)
         print "ok"
         print "test list branches:"
         branches = self.gs.ls_branches ("unit_test")
         pprint.pprint (branches)
         assert len (branches) == 1
-        assert branches["master"] == master_head 
+        assert branches["master"] == master_v1
         print "ok"
         print "store file into master:"
-        new_head = self.store ("unit_test", "master", "testfile", "test/test_file")
-        assert new_head
+        master_v2 = self.store ("unit_test", "master", "testfile", "test/test_file")
+        self.assert_ (master_v2)
         print "create branch1:"
     #    self.gs.create_branch ("unit_test", "branch2", "branch1")
-        branch_head = self.gs.create_branch ("unit_test", "branch1")
+        branch1_v1 = self.gs.create_branch ("unit_test", "branch1")
+        self.assertEqual (branch1_v1, master_v2)
     #    self.gs.create_branch ("unit_test", "branch1", "master")
         branches = self.gs.ls_branches ("unit_test")
-        self.gs.create_branch ("unit_test", "branch2", "branch1")
+        branch2_v1 = self.gs.create_branch ("unit_test", "branch2", "branch1")
+        self.assertEqual (branch2_v1, master_v2)
         pprint.pprint (branches)
         assert len (branches) == 2
         print "store test_file2 into branch1:"
-        branch1_head = self.store ("unit_test", "branch1", "haha/haha/testfile", "test/test_file2")
-        assert branch_head != branch1_head 
-        master_head = self.store ("unit_test", "master", "haha/testfile", "test/test_file")
+        branch1_v2 = self.store ("unit_test", "branch1", "haha/haha/testfile", "test/test_file2")
+        assert branch1_v2 != branch1_v1
+        master_v3 = self.store ("unit_test", "master", "haha/testfile", "test/test_file")
         print "store test_file into master:"
         branches = self.gs.ls_branches ("unit_test")
-        assert branches["master"] == master_head
-        assert branches["branch1"] == branch1_head
+        assert branches["master"] == master_v3
+        assert branches["branch1"] == branch1_v2
         pprint.pprint (branches)
         print "ls unit_test:branch1"
         print self.gs.ls ("unit_test", "branch1")
         print "store test_file2 into master"
-        master_head_new = self.store ("unit_test", "master", "haha/testfile", "test/test_file2")
-        print "master has advanced to ", master_head_new
+        master_v4 = self.store ("unit_test", "master", "haha/testfile", "test/test_file2")
+        print "master has advanced to ", master_v4
         print "test ls_head"
-        assert self.gs.ls_head('unit_test', 'master') == master_head_new
+        assert self.gs.ls_head('unit_test', 'master') == master_v4
         print "checkout master"
-        self._checkout ('unit_test', master_head, "haha/testfile", "test/test_file")
-        self._checkout ('unit_test', master_head_new, "haha/testfile", "test/test_file2")
-        self._checkout ("unit_test", branch1_head, "haha/haha/testfile", "test/test_file2")
+        self._checkout ('unit_test', master_v3, "haha/testfile", "test/test_file")
+        self._checkout ('unit_test', master_v4, "haha/testfile", "test/test_file2")
+        self._checkout ("unit_test", branch1_v2, "haha/haha/testfile", "test/test_file2")
+        print "test log"
+        master_revisions = self.gs.log ("unit_test", "master")
+        master_revisions = map (lambda x:x['commit'], master_revisions)
+        master_revisions.reverse ()
+        self.assertEqual (master_revisions, [master_v1, master_v2, master_v3, master_v4])
+        print master_revisions
+        branch1_revisions = self.gs.log ("unit_test", "branch1")
+        branch1_revisions = map (lambda x:x['commit'], branch1_revisions)
+        branch1_revisions.reverse ()
+        self.assertEqual (branch1_revisions, [master_v1, master_v2, branch1_v2])
+        print branch1_revisions
+
         print "test delete branch1"
         self.gs.delete_branch('unit_test', 'branch1')
         branches = self.gs.ls_branches ("unit_test")
@@ -245,6 +260,31 @@ class TestGitStore (unittest.TestCase):
         b4 = self.gs.delete ("unit_test", "b1", "file3")
         self.assert_ (not b4)
         self.assertEqual (self.gs.ls ("unit_test", "master"), ["file4"])
+
+    def test_log (self):
+        master_v1 = self.gs.create_repo ("unit_test")
+        self.assert_ (master_v1)
+        master_v2 = self.store ("unit_test", "master", "test_file", "test/test_file")
+        self.assert_ (master_v2)
+        master_v3 = self.store ("unit_test", "master", "test_file", "test/test_file2")
+        self.assert_ (master_v3)
+        branch1_v1 = self.gs.create_branch ("unit_test", "branch1", master_v1)
+        self.assert_ (branch1_v1)
+        branch1_v2 = self.store ("unit_test", "branch1", "test_file", "test/test_file")
+        self.assert_ (branch1_v2)
+        branch1_v3 = self.store ("unit_test", "branch1", "test_file", "test/test_file2")
+        self.assert_ (branch1_v3)
+        master_rev_log = self.gs.log ("unit_test", "master") 
+        master_rev_log = map (lambda x:x['commit'], master_rev_log)
+        master_rev_log.reverse ()
+        print "master_rev_log", master_rev_log
+        self.assertEqual (master_rev_log, [master_v1, master_v2, master_v3])
+        branch1_rev_log = self.gs.log ("unit_test", "branch1")
+        branch1_rev_log = map (lambda x:x['commit'], branch1_rev_log)
+        branch1_rev_log.reverse ()
+        print "branch1_rev_log", branch1_rev_log
+        self.assertEqual (branch1_rev_log, [branch1_v1, branch1_v2, branch1_v3])
+
 
 #    def test_lock_file (self):
 #        self.gs = GitStore (need_lock="file")

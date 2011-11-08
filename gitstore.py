@@ -246,13 +246,20 @@ class GitStore (object):
           
 
     def _do_commit (self, repo, head, tree_binsha, msg, parent=None):
-        """ return new commit's hexsha, on error return None and output error
+        """ if parent parameter is None, we make it default to be [head.commit]
+            
+            return new commit's hexsha, on error return None and output error
             """
         assert (repo)
-        assert isinstance (head, HEAD) or isinstance (head, Head)
+        assert head is None or isinstance (head, HEAD) or isinstance (head, Head)
         assert msg != None
+        if parent is None:
+            try:
+                parent = [head.commit]
+            except ValueError:
+                pass
         new_commit = Commit.create_from_tree (repo, Tree (repo, tree_binsha), msg, \
-                            parent_commits=parent, head=False) 
+                            parent_commits=parent, head=False) # because the first commit has no parent, parameter head==True likely fails
         head.commit = new_commit #modify head's ref to commit
         return new_commit
 
