@@ -246,25 +246,25 @@ class TestGitStore (unittest.TestCase):
         self.assert_ (not b4)
         self.assertEqual (self.gs.ls ("unit_test", "master"), ["file4"])
 
-    def test_lock_file (self):
-        self.gs = GitStore (need_lock="file")
-        pid1 = os.fork ()
-        if not pid1:
-            time.sleep (2)
-            self.gs.lock_repo ("test")
-            time.sleep (1)
-            self.gs.unlock_repo ("test")
-            os._exit (0)
-        pid2 = os.fork ()
-        if not pid2:
-            self.gs.lock_repo ("test")
-            time.sleep (5)
-            self.gs.unlock_repo ("test")
-            os._exit (0)
-        (_pid1, status) = os.wait ()
-        (_pid2, status) = os.wait ()
-        self.assertEqual (_pid1, pid2)
-        self.assertEqual (_pid2, pid1)
+#    def test_lock_file (self):
+#        self.gs = GitStore (need_lock="file")
+#        pid1 = os.fork ()
+#        if not pid1:
+#            time.sleep (2)
+#            self.gs.lock_repo ("test")
+#            time.sleep (1)
+#            self.gs.unlock_repo ("test")
+#            os._exit (0)
+#        pid2 = os.fork ()
+#        if not pid2:
+#            self.gs.lock_repo ("test")
+#            time.sleep (5)
+#            self.gs.unlock_repo ("test")
+#            os._exit (0)
+#        (_pid1, status) = os.wait ()
+#        (_pid2, status) = os.wait ()
+#        self.assertEqual (_pid1, pid2)
+#        self.assertEqual (_pid2, pid1)
 
 
 if __name__ == '__main__':

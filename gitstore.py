@@ -318,26 +318,26 @@ class GitStore (object):
         self.unlock_repo (repo_name)
         return commit.hexsha
 
-    def create_branch (self, repo_name, new_branch, from_branch='master'):
+    def create_branch (self, repo_name, new_branch, from_revision='master'):
         """return hexsha of new repo's head
            """
         assert isinstance (repo_name, str)
         assert isinstance (new_branch, str)
         repo = self._get_repo (repo_name)
         self.lock_repo (repo_name)
-        _from = self._get_branch (repo, from_branch)
+        _from = self._get_commit (repo, from_revision)
         if not _from:
             self.unlock_repo (repo_name)
-            self._throw_err ("repo '%s' has no branch '%s'" % (repo_name, from_branch))
+            self._throw_err ("repo '%s' has no revision '%s'" % (repo_name, from_revision))
         if self._get_branch (repo, new_branch):
             self.unlock_repo (repo_name)
             self._throw_err ("repo '%s' already has branch '%s'" % (repo_name, new_branch))
         head = None
         try:
-            head = Head.create (repo, new_branch, repo.branches[from_branch])
+            head = Head.create (repo, new_branch, _from)
         except Exception, e: 
             self.unlock_repo (repo_name)
-            self._throw_err ("repo '%s' cannot create branch '%s' from '%s', %s" % (repo_name, new_branch, from_branch, str(e)))
+            self._throw_err ("repo '%s' cannot create branch '%s' from '%s', %s" % (repo_name, new_branch, from_revision, str(e)))
         self.unlock_repo (repo_name)
         return head.commit.hexsha
 

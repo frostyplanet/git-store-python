@@ -111,7 +111,7 @@ g_cmds = {
     'create_branch': {
         'handle':create_branch,
         'args':['repo_name', 'new_branch'],
-        'optional_args':['from_branch'],
+        'optional_args':['from_revision'],
     },
     'delete_branch': {
         'handle':delete_branch,
