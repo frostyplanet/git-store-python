@@ -25,6 +25,34 @@ def split_path (filepath):
             break
     return path_segs
 
+def create_path_tree (path_obj_dict, expect_latest_version_dict=None):
+    # if path_obj_dict 's value is None, means directory, otherwise is the file object of file content to be write
+    root = {}
+    for path, v in path_obj_dict.iteritems ():
+        path_segs = split_path (path)
+        t = root
+        can_replace = True
+        if expect_latest_version_dict:
+            expect_latest_version = expect_latest_version_dict.get (path)
+            if expect_latest_version == '':
+                can_replace = False
+        if len (path_segs) > 1:
+            for seg in path_segs[0:-1]:
+                print seg
+                if t.has_key (seg):
+                    t = t[seg]
+                else:
+                    t[seg] = {}
+                    t = t[seg]
+        if v is None:
+            t[path_segs[-1]] = None
+        else:
+            t[path_segs[-1]] = (v, can_replace)
+    print path_obj_dict
+    print root
+    return root
+
+
 class GitStore (object):
     
     _base_path = None
@@ -105,7 +133,7 @@ class GitStore (object):
             pass
         return commit
     
-    def _store_file (self, repo, fileobj):
+    def _store_blob (self, repo, fileobj):
         """ return new file's istream
             """
         assert repo
@@ -130,84 +158,139 @@ class GitStore (object):
         repo.odb.store (t_stream)
         sio.close ()
         return t_stream
+    
 
-    def _create_path (self, repo, tree, path_segs, fileobj, is_file=True, replace_file=True):
-        """ a recursive function.
-            if is_file is True, fileobj a opened python file object or StringIO object contains content to write  
-               if replace_file is False, will raise Exception when file already present.
-                   replace_file only effective when is_file is True,
-            if is_file is False, fileobj must be None, and will return None when directory path already exists
-                 """
-        # a recursive function
-        assert repo is not None
-        assert isinstance (path_segs, list)
-        assert not is_file or fileobj is not None
-        item_name = path_segs[0]
-        item_mode = None
-        _istream = None
+    def _create_path_iter (self, repo, parent_tree, path_tree):
         entities = None
-        if isinstance (tree, Tree):
-            item = None
+        if parent_tree is None:
+            entities = []
+        else:
+            entities = parent_tree.cache
+        def __add_entities (entities, hexsha, binsha, item_mode, item_name):
+            if isinstance (entities, list):
+                entities.append ((binsha, item_mode, item_name))
+            else:
+                entities.add (hexsha, item_mode, item_name, force=True)
+            return
+        for item_name in path_tree.keys ():
+            obj = path_tree[item_name]
+            cur_item = None
             try:
-                item = tree[item_name]
+                if parent_tree is not None:
+                    cur_item = parent_tree[item_name]
             except KeyError:
                 pass
-            if len (path_segs) > 1: # need to step into sub directory
-                if item is not None:
-                    item_mode = item.mode
-                    if not stat.S_ISDIR (item_mode):
+            if obj is None:
+                if cur_item is None:
+                    _istream = self._store_tree (repo, [])
+                    __add_entities (entities, _istream.hexsha, _istream.binsha, self.dir_mode, item_name)
+                else:
+                    if not stat.S_ISDIR (cur_item.mode):
                         raise Exception ("Oops, '%s' is a file blocking path creation")
-                else:
-                    item_mode = self.dir_mode
-                _istream = self._create_path (repo, item, path_segs[1:], fileobj, is_file, replace_file)
-                if _istream is None:
                     return None
-            else: 
-                if item is not None:
-                    item_mode = item.mode
-                    if is_file:
-                        if stat.S_ISDIR (item_mode):
-                            raise Exception ("Oops, target path exists but is a directory")
-                        if not replace_file:
-                            raise Exception ("target path already exists")
+                    # already exists, nothing to do
+            elif isinstance (obj, dict):
+                if cur_item is not None:
+                    if not stat.S_ISDIR (cur_item.mode):
+                        raise Exception ("Oops, '%s' is a file blocking path creation")
+                _istream = self._create_path_iter (repo, cur_item, obj)
+                if _istream is not None:
+                    __add_entities (entities, _istream.hexsha, _istream.binsha, self.dir_mode, item_name)
+            elif isinstance (obj, tuple): # obj is tuple
+                (fileobj, can_replace) = obj
+                if cur_item is not None:
+                    if stat.S_ISREG (cur_item.mode):
+                        if not can_replace:
+                            raise Exception ("%s is already exists in target path" % (item_name)) # TODO what path?
                     else:
-                        if stat.S_ISREG (item_mode): 
-                            raise Exception ("Oops, target path exists but is not a directory")
-                        return None
-                else:
-                    if is_file:
-                        item_mode = self.file_mode
-                    else:
-                        item_mode = self.dir_mode
-                    # path already exists, do some checking
-                if is_file:
-                    _istream = self._store_file (repo, fileobj) #store file content
-                    if item is not None:
-                        if _istream.hexsha == item.hexsha:
-                            return None #  already has the same file
-                else: 
-                    _istream = self._store_tree (repo, []) # create empty directory
-            # add tree-item to its parent
-            assert _istream is not None
-            tm = tree.cache
-            tm.add (_istream.hexsha, item_mode, item_name, force=True)
-            tm.set_done ()
-            entities = tree._cache
-        else:
-            if len (path_segs) > 1: # need to create sub-directory structure
-                _istream = self._create_path (repo, None, path_segs[1:], fileobj, is_file, replace_file)
-                item_mode = self.dir_mode
-            else: 
-                if is_file:
-                    _istream = self._store_file (repo, fileobj) #store file content
-                    item_mode = self.file_mode
-                else: 
-                    _istream = self._store_tree (repo, []) # create empty directory
-                    item_mode = self.dir_mode
-            assert _istream is not None
-            entities = [ (_istream.binsha, item_mode, item_name) ]
+                        raise Exception ("Oops, '%s' is a directory blocking file creation")
+                _istream = self._store_blob (repo, fileobj)
+                __add_entities (entities, _istream.hexsha, _istream.binsha, self.file_mode, item_name)
+        if parent_tree is not None:
+            # entities is TreeCacheModifier
+            entities.set_done ()
+            entities = parent_tree._cache
         t_stream = self._store_tree (repo, entities)
         return t_stream
+
+
+#    def _create_path (self, repo, tree, path_segs, fileobj, is_file=True, replace_file=True):
+#        """ a recursive function.
+#            if is_file is True, fileobj a opened python file object or StringIO object contains content to write  
+#               if replace_file is False, will raise Exception when file already present.
+#                   replace_file only effective when is_file is True,
+#            if is_file is False, fileobj must be None, and will return None when directory path already exists
+#                 """
+#        # a recursive function
+#        assert repo is not None
+#        assert isinstance (path_segs, list)
+#        assert not is_file or fileobj is not None
+#        item_name = path_segs[0]
+#        item_mode = None
+#        _istream = None
+#        entities = None
+#        if isinstance (tree, Tree):
+#            item = None
+#            try:
+#                item = tree[item_name]
+#            except KeyError:
+#                pass
+#            if len (path_segs) > 1: # need to step into sub directory
+#                if item is not None:
+#                    item_mode = item.mode
+#                    if not stat.S_ISDIR (item_mode):
+#                        raise Exception ("Oops, '%s' is a file blocking path creation")
+#                else:
+#                    item_mode = self.dir_mode
+#                _istream = self._create_path (repo, item, path_segs[1:], fileobj, is_file, replace_file)
+#                if _istream is None:
+#                    return None
+#            else: 
+#                if item is not None:
+#                    item_mode = item.mode
+#                    if is_file:
+#                        if stat.S_ISDIR (item_mode):
+#                            raise Exception ("Oops, target path exists but is a directory")
+#                        if not replace_file:
+#                            raise Exception ("target path already exists")
+#                    else:
+#                        if stat.S_ISREG (item_mode): 
+#                            raise Exception ("Oops, target path exists but is not a directory")
+#                        return None
+#                else:
+#                    if is_file:
+#                        item_mode = self.file_mode
+#                    else:
+#                        item_mode = self.dir_mode
+#                    # path already exists, do some checking
+#                if is_file:
+#                    _istream = self._store_blob (repo, fileobj) #store file content
+#                    if item is not None:
+#                        if _istream.hexsha == item.hexsha:
+#                            return None #  already has the same file
+#                else: 
+#                    _istream = self._store_tree (repo, []) # create empty directory
+#            # add tree-item to its parent
+#            assert _istream is not None
+#            tm = tree.cache
+#            tm.add (_istream.hexsha, item_mode, item_name, force=True)
+#            tm.set_done ()
+#            entities = tree._cache
+#        else:
+#            if len (path_segs) > 1: # need to create sub-directory structure
+#                _istream = self._create_path (repo, None, path_segs[1:], fileobj, is_file, replace_file)
+#                item_mode = self.dir_mode
+#            else: 
+#                if is_file:
+#                    _istream = self._store_blob (repo, fileobj) #store file content
+#                    item_mode = self.file_mode
+#                else: 
+#                    _istream = self._store_tree (repo, []) # create empty directory
+#                    item_mode = self.dir_mode
+#            assert _istream is not None
+#            entities = [ (_istream.binsha, item_mode, item_name) ]
+#        t_stream = self._store_tree (repo, entities)
+#        return t_stream
 
     def _delete_path (self, repo, tree, path_segs):
         # a recursive function
@@ -507,54 +590,60 @@ class GitStore (object):
         si = StringIO (content)
         val = None
         try:
-            val = self.store_file (repo_name, branch, path, si, expect_latest_version=expect_latest_version, msg=msg)
+            val = self.store_file (repo_name, branch, {path:si}, expect_latest_version_dict={path:expect_latest_version}, msg=msg)
         finally:
             si.close ()
         return val
             
-    def store_file (self, repo_name, branch, path, fileobj, expect_latest_version=None, msg=None):
+    def store_file (self, repo_name, branch, path_obj_dict, expect_latest_version_dict=None, msg=None):
         """ 
-            fileobj is file like object or StringIO object, contain the content to be writen, you will need to close it youself alfterware.
-            expect_latest_version: empty string '' means only store into the branch when no such a file in it , 
+            both path_obj_dict and expect_latest_version_dict 's key is filepath
+            path_obj_dict's value can be file object or StringIO object, contain the content to be writen, you will need to close it youself alfterware.
+            expect_latest_version_dict 's value : empty string '' means only store into the branch when no such a file in it , 
                     non-empty string means only store into the branch when the file's latest version match,
                     None means always replace.
             return new commit version after store a file, if the file is the same with the branch's head, return None
             """
         assert isinstance (repo_name, basestring)
         assert isinstance (branch, basestring)
-        assert fileobj
         repo = self._get_repo (repo_name)
         self.lock_repo (repo_name)
         head = self._get_branch (repo, branch)
         if not head:
             self.unlock_repo (repo_name)
             self._throw_err ("branch '%s' of repo '%s' not exists" % (branch, repo_name))
-        if expect_latest_version:
-            _cur_commit = self._latest_commit (repo, branch, path)
-            if _cur_commit is None:
-                self.unlock_repo (repo_name)
-                self._throw_err ("file has no history, maybe the repo is corrupted")
-            if _cur_commit.hexsha != expect_latest_version:
-                self.unlock_repo (repo_name)
-                self._throw_err ("file has been update by others, new version is %s" % (_cur_commit.hexsha))
-        tree_binsha = None
+        if isinstance (expect_latest_version_dict, dict):
+            for path, expect_latest_version in expect_latest_version_dict.iteritems ():
+                if not expect_latest_version:
+                    continue
+                _cur_commit = self._latest_commit (repo, branch, path)
+                if _cur_commit is None:
+                    self.unlock_repo (repo_name)
+                    self._throw_err ("file has no history, maybe the repo is corrupted")
+                if _cur_commit.hexsha != expect_latest_version:
+                    self.unlock_repo (repo_name)
+                    self._throw_err ("file has been update by others, new version is %s" % (_cur_commit.hexsha))
+        new_tree_binsha = None
+        old_tree = head.commit.tree
+        files = ", ".join (map (lambda x:"'" + x + "'", path_obj_dict.keys ()))
         try:
-            path_segs = split_path (path)
-            t_stream = self._create_path (repo, head.commit.tree, path_segs, fileobj, is_file=True, replace_file=(expect_latest_version != ''))
-            if t_stream is None: # file is the same with branch HEAD
+            path_tree = create_path_tree (path_obj_dict, expect_latest_version_dict)
+            assert path_tree
+            t_stream = self._create_path_iter (repo, old_tree, path_tree)
+            new_tree_binsha = t_stream.binsha
+            if new_tree_binsha == old_tree.binsha: # the same as before
                 self.unlock_repo (repo_name)
                 return None
-            tree_binsha = t_stream.binsha
         except Exception, e:
             self.unlock_repo (repo_name)
-            self._throw_err ("cannot store file '%s' into repo '%s': %s" % 
-                    (path, repo_name, str (e)))
+            self._throw_err ("cannot store file %s into repo '%s': %s" % 
+                    (files, repo_name, str (e)))
         commit = None
         try:
-            commit_msg = "store file %s" % (path)
+            commit_msg = "store file %s" % (files)
             if msg:
                 commit_msg += ", %s" % (msg)
-            commit = self._do_commit (repo, head, tree_binsha, commit_msg)
+            commit = self._do_commit (repo, head, new_tree_binsha, commit_msg)
         except Exception, e:
             self.unlock_repo (repo_name)
             self._throw_err ("cannot create a new commit in '%s': %s" % (repo_name, str (e)))
@@ -570,14 +659,15 @@ class GitStore (object):
         if not head:
             self.unlock_repo (repo_name)
             self._throw_err ("branch '%s' of repo '%s' not exists" % (branch, repo_name))
-        tree_binsha = None
+        new_tree_binsha = None
+        old_tree = head.commit.tree
         try:
-            path_segs = split_path (path)
-            t_stream = self._create_path (repo, head.commit.tree, path_segs, None, is_file=False)
-            if not t_stream:
+            path_tree = create_path_tree ({path:None})
+            t_stream = self._create_path_iter (repo, old_tree, path_tree)
+            new_tree_binsha = t_stream.binsha
+            if new_tree_binsha == old_tree.binsha: # the same as before
                 self.unlock_repo (repo_name)
                 return None
-            tree_binsha = t_stream.binsha
         except Exception, e:
             self.unlock_repo (repo_name)
             self._throw_err ("cannot mkdir '%s' into repo '%s': %s" % 
@@ -588,7 +678,7 @@ class GitStore (object):
             commit_msg = "mkdir %s" % (path)
             if msg:
                 commit_msg += ", %s" % (msg)
-            commit = self._do_commit (repo, head, tree_binsha, commit_msg)
+            commit = self._do_commit (repo, head, new_tree_binsha, commit_msg)
         except Exception, e:
             self.unlock_repo (repo_name)
             self._throw_err ("cannot create a new commit in '%s': %s" % (repo_name, str (e)))

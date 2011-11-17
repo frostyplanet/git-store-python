@@ -41,15 +41,26 @@ class TestGitStore (unittest.TestCase):
         md52 = _get_md5 (orgfile)
         print "compare", repo_name, filepath, version, tempfile, orgfile
         print "got", md51, md52
-        assert md51 == md52
+        self.assertEqual (md51, md52)
         if os.path.isfile (tempfile): 
             os.unlink (tempfile)
+
+    def _read (self, repo_name, version, filepath, orgfile):
+        content = self.gs.read (repo_name, version, filepath)
+        _content = None
+        f = open (orgfile, 'r')
+        try:
+            _content = "".join (f.readlines ())
+        finally:
+            f.close ()
+        self.assertEqual (content, _content)
+
 
     def store (self, repo_name, branch_name, path, temppath, expect_latest_version=None):
         f = open (temppath, "r")
         commit = None
         try:
-            commit = self.gs.store_file (repo_name, branch_name, path, f, expect_latest_version)
+            commit = self.gs.store_file (repo_name, branch_name, {path:f}, {path:expect_latest_version})
         finally:
             f.close()
         return commit
@@ -168,6 +179,34 @@ class TestGitStore (unittest.TestCase):
         branches = self.gs.ls_branches ("unit_test")
         print "check branch2 been deleted"
         assert 'branch2' not in branches
+
+    def test_store_file_multiple_and_read (self):
+        master_head = self.gs.create_repo ("unit_test")
+        f1 = open ("test/test_file", "r")
+        f2 = open ("test/test_file2", "r")
+        print "* test store 2 file"
+        v1 = self.gs.store_file ("unit_test", "master", {"test": f1, "haha/test2": f2}, {'test': '', 'haha/test2': ''})
+        self.assert_ (v1)
+        self.assertEqual (self.gs.ls ("unit_test", "master"), ['haha/test2', 'test', ])
+
+        print "* test store 3 file"
+        v2 = self.gs.store_file ("unit_test", "master", {"haha/test": f1, "haha/haha/test":f1, "haha/haha2/test2": f2})
+        self.assert_ (v2)
+        self.assertEqual (self.gs.ls ("unit_test", "master"), ['haha/haha/test', 'haha/haha2/test2', 'haha/test', 'haha/test2', 'test', ])
+
+        print "* test read"
+        self._read ("unit_test", "master", "test", "test/test_file")
+        self._read ("unit_test", "master", "haha/test2", "test/test_file2")
+        self._read ("unit_test", "master", "haha/test", "test/test_file")
+        self._read ("unit_test", "master", "haha/haha/test", "test/test_file")
+        self._read ("unit_test", "master", "haha/haha2/test2", "test/test_file2")
+
+        print "* test rev_log"
+        rev_log = self.gs.log ("unit_test", "master")
+        pprint.pprint (rev_log)
+        self.assertEqual (len (rev_log), 3)
+
+
 
     def test_store_file_and_directory (self):
         master_head = self.gs.create_repo ("unit_test")

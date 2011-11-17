@@ -58,7 +58,7 @@ def store_file (args):
         expect_latest_version = args[4]
     f = open (temppath, "r")
     try:
-        print gs.store_file (repo_name, branch_name, path, f, expect_latest_version)
+        print gs.store_file (repo_name, branch_name, {path:f}, expect_latest_version_dict={path:expect_latest_version})
     finally:
         f.close ()
 
