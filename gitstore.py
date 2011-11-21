@@ -38,7 +38,6 @@ def create_path_tree (path_obj_dict, expect_latest_version_dict=None):
                 can_replace = False
         if len (path_segs) > 1:
             for seg in path_segs[0:-1]:
-                print seg
                 if t.has_key (seg):
                     t = t[seg]
                 else:
@@ -48,8 +47,6 @@ def create_path_tree (path_obj_dict, expect_latest_version_dict=None):
             t[path_segs[-1]] = None
         else:
             t[path_segs[-1]] = (v, can_replace)
-    print path_obj_dict
-    print root
     return root
 
 
