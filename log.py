@@ -6,7 +6,6 @@
 # @brief
 #
 import os
-import os.path
 import logging
 import sys
 import traceback
@@ -16,28 +15,26 @@ from logging.handlers import RotatingFileHandler
 class Log (logging.Logger):
 
     __file_handler = None
-    log_level_map = {'DEBUG': logging.DEBUG,
-                    'INFO':logging.INFO,
-                    'WARNING':logging.WARNING,
-                    'ERROR':logging.ERROR,
-                    'CRITICAL':logging.CRITICAL,
-                    }
+    loggers = {}
+    log_level_map = {
+            'DEBUG': logging.DEBUG,
+            'INFO':logging.INFO,
+            'WARNING':logging.WARNING,
+            'ERROR':logging.ERROR,
+            'CRITICAL':logging.CRITICAL,
+            }
     
-    def __init__ (self, filename = None, level = None, config = None, base_path = None):
+    def __init__ (self, filename = None, level = None, config = None, log_dir=None):
             
         __log_path = ""
         __rotate_size = 0
         __backup_count = 0 # if 0, will only truncate but no backup
         __log_level = logging.INFO
 
-        #init path according to config
-        if "base_path" in dir(config):
-            __log_path = config.base_path
-        elif base_path:
-            __log_path = base_path
-
         if "log_dir" in dir(config):
             __log_path = os.path.join (__log_path, config.log_dir)
+        elif log_dir:
+            __log_path = log_dir
 
         if "log_rotate_size" in dir(config):
             __rotate_size = config.log_rotate_size * 1000
@@ -73,22 +70,25 @@ class Log (logging.Logger):
         if __log_level:
             self.setLevel (__log_level)
 
+        self.loggers[filename] = self # register
+
     def __del__ (self):
-        self.removeHandler (self.__file_handler)
+        try:
+            self.removeHandler (self.__file_handler)
+        except:
+            pass
         try:
             self.__file_handler.close ()
         except Exception, e:
-            print str(e)
             pass
     
     def format_frame (f):
-        file, line, func, code = f
-        return "in %s() ('%s':%d)" % (func, file, line)
+        _file, line, func, code = f
+        return "in '%s':%d" % (_file, line)
     format_frame = staticmethod (format_frame)
 
     def format_frame_ex (f):
-        file, line, func, code = f
-        return "in %s() ('%s':%d) '%s'" % (func, file, line, code)
+        return "in '%s':%d %s() '%s'" % f
     format_frame_ex = staticmethod (format_frame_ex)
             
     def get_exc_frames ():
@@ -102,25 +102,34 @@ class Log (logging.Logger):
         return l
     get_exc_frames = staticmethod (get_exc_frames)
             
-    def exception (self, msg, bt_level = 0):
+    def exception_one (self, msg, bt_level = 0):
         assert (bt_level >= 0)
         fs = self.get_exc_frames ()
         prefix = "[%s] " % (self.format_frame (fs[-1 -bt_level]))
+        if isinstance (msg, Exception):
+            prefix += "%s " % (type(msg))
         logging.Logger.log (self, logging.ERROR, prefix + str (msg))
     
-    def exception_ex (self, msg, bt_level = 0):
-        assert (bt_level >= 0)
+    def exception (self, msg):
+
         fs = self.get_exc_frames ()
-        prefix = "[ exception backtrace:"
+        tb = "\n[ backtrace:"
         for l in fs:
-            prefix = prefix + "\n" + self.format_frame_ex (l)
-        prefix += "] "
-        logging.Logger.log (self, logging.ERROR, prefix + str (msg))
+            tb = tb + "\n" + self.format_frame_ex (l)
+        tb += "] \n"
+        _msg = "[exception] "
+        if isinstance (msg, Exception):
+            _msg += "%s " % (type(msg))
+        _msg += str (msg) + tb
+        logging.Logger.log (self, logging.ERROR, _msg)
+
+    def exception_ex (self, *args):
+        self.exception (*args)
             
     def log (self, level, msg, bt_level = 0):
         assert (bt_level >= 0)
         fs = traceback.extract_stack ()
-        bt_level +=1 
+        bt_level += 1 
         prefix = "[%s] " % (self.format_frame (fs[-1 -bt_level]))
         logging.Logger.log (self, level, prefix + str (msg))
 
@@ -133,11 +142,21 @@ class Log (logging.Logger):
     def warning (self, msg, bt_level = 0):
         self.log (logging.WARNING, msg, bt_level + 1)
 
+    def warn (self, msg, bt_level = 0):
+        self.log (logging.WARNING, msg, bt_level + 1)
+
     def error (self, msg, bt_level = 0):
         self.log (logging.ERROR, msg, bt_level + 1)    
 
     def critical (self, msg, bt_level = 0):
         self.log (logging.CRITICAL, msg, bt_level + 1)    
     
+def getLogger (name=None):
+    if not name:
+        name = 'main'
+    logger = Log.loggers.get (name)
+    if not logger:
+        logger = Log (filename=name)
+    return logger
 
 # vim: set sw=4 ts=4 et :
