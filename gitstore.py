@@ -68,11 +68,14 @@ class GitStore (object):
             raise Exception ("repo_basepath not found in config")
 
         PWD = dirname(abspath(__file__))
-        self._base_path = os.path.join (PWD, config.repo_basepath)
+        
+        self._base_path = config.repo_basepath
+        if not os.path.isabs (self._base_path):
+            self._base_path = os.path.join (PWD, self._base_path)
         if not os.path.isdir (self._base_path):
             if 0 != os.system ('mkdir -p "%s"' % (self._base_path)):
                 raise Exception ("cannot initial repo dir in '%s'" % (self._base_path))
-        self._logger = Log ("cmfs", config=config, base_path=PWD)
+        self._logger = Log ("cmfs", config=config)
         if need_lock == 'file':
             self._locker_path = os.path.join (self._base_path, self._locker_dir_name)
             if not os.path.exists (self._locker_path):
