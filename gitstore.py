@@ -606,6 +606,8 @@ class GitStore (object):
             """
         assert isinstance (repo_name, basestring)
         assert isinstance (branch, basestring)
+        if len (path_obj_dict) == 0:
+            return
         repo = self._get_repo (repo_name)
         self.lock_repo (repo_name)
         head = self._get_branch (repo, branch)
