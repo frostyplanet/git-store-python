@@ -625,7 +625,10 @@ class GitStore (object):
                     self._throw_err ("file has been update by others, new version is %s" % (_cur_commit.hexsha))
         new_tree_binsha = None
         old_tree = head.commit.tree
-        files = ", ".join (map (lambda x:"'" + x + "'", path_obj_dict.keys ()))
+        if len (path_obj_dict) <= 3:
+            files = "file:" ", ".join (map (lambda x:"'" + x + "'", path_obj_dict.keys ()))
+        else:
+            files = "%d files" % (len(path_obj_dict))
         try:
             path_tree = create_path_tree (path_obj_dict, expect_latest_version_dict)
             assert path_tree
@@ -640,7 +643,7 @@ class GitStore (object):
                     (files, repo_name, str (e)))
         commit = None
         try:
-            commit_msg = "store file %s" % (files)
+            commit_msg = "store %s" % (files)
             if msg:
                 commit_msg += ", %s" % (msg)
             commit = self._do_commit (repo, head, new_tree_binsha, commit_msg)
