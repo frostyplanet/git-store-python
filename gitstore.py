@@ -628,7 +628,7 @@ class GitStore (object):
         new_tree_binsha = None
         old_tree = head.commit.tree
         if len (path_obj_dict) <= 3:
-            files = "file:" ", ".join (map (lambda x:"'" + x + "'", path_obj_dict.keys ()))
+            files = "file:" + ", ".join (map (lambda x:"'" + x + "'", path_obj_dict.keys ()))
         else:
             files = "%d files" % (len(path_obj_dict))
         try:
