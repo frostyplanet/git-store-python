@@ -398,9 +398,10 @@ class GitStore (object):
         commit = None
         try:
             ts = self._store_tree (repo, [])
-            commit_msg = "create repo"
             if msg:
-                commit_msg += ", %s" % (msg)
+                commit_msg = msg
+            else:
+                commit_msg = "create repo"
             commit = self._do_commit (repo, repo.head, ts.binsha, commit_msg)
         except Exception, e:
             self.unlock_repo (repo_name)
@@ -645,9 +646,10 @@ class GitStore (object):
                     (files, repo_name, str (e)))
         commit = None
         try:
-            commit_msg = "store %s" % (files)
             if msg:
-                commit_msg += ", %s" % (msg)
+                commit_msg = msg
+            else:
+                commit_msg = "store %s" % (files) 
             commit = self._do_commit (repo, head, new_tree_binsha, commit_msg)
         except Exception, e:
             self.unlock_repo (repo_name)
@@ -680,9 +682,10 @@ class GitStore (object):
 
         commit = None
         try:
-            commit_msg = "mkdir %s" % (path)
             if msg:
-                commit_msg += ", %s" % (msg)
+                commit_msg = msg
+            else:
+                commit_msg = "mkdir %s" % (path)
             commit = self._do_commit (repo, head, new_tree_binsha, commit_msg)
         except Exception, e:
             self.unlock_repo (repo_name)
@@ -714,9 +717,10 @@ class GitStore (object):
             self._throw_err ("cannot delete '%s' from repo '%s' ref '%s': %s" % 
                     (path, repo_name, branch, str (e)))
         try:
-            commit_msg = "delete %s" % (path)
             if msg:
-                commit_msg += ", %s" % (msg)
+                commit_msg = msg
+            else:
+                commit_msg = "delete %s" % (path)
             commit = self._do_commit (repo, head, tree_binsha, commit_msg)
         except Exception, e:
             self.unlock_repo (repo_name)
