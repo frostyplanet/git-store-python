@@ -75,8 +75,11 @@ class TestGitStore (unittest.TestCase):
 
     def test_banch_patch (self):
         """ see pkgs/get_commit_from_branch_name_bug.patch """
-        master_head = self.gs.create_repo ("unit_test")
+        repo_desc = "for test"
+        master_head = self.gs.create_repo ("unit_test", description=repo_desc)
         self.assert_ (master_head)
+        repo = self.gs._get_repo ("unit_test")
+        self.assertEqual (repo.description, repo_desc)
         self.assert_ (self.gs.create_branch ("unit_test", "aaa"))
 
     def test_exceptions (self):

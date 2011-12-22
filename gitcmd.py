@@ -107,6 +107,7 @@ g_cmds = {
     'create_repo': {
         'handle':create_repo,
         'args':['repo_name'],
+        'optional_args': ['repo_desc'],
     },
     'create_branch': {
         'handle':create_branch,

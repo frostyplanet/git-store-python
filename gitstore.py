@@ -380,7 +380,7 @@ class GitStore (object):
             return self._find_path (sub_tree, str.join("/", path_segs[1:]))
         return None
 
-    def create_repo (self, repo_name, msg=None):
+    def create_repo (self, repo_name, description=None):
         """return hexsha of new repo's head
            """
         assert isinstance (repo_name, str)
@@ -392,16 +392,15 @@ class GitStore (object):
         repo = None
         try:
             repo = Repo.init (repo_path, True, bare=True)
+            if description:
+                repo.description = description
         except Exception, e:
             self.unlock_repo (repo_name)
             self._throw_err ("repo '%s' create error: %s" % (repo_name, str (e)))
         commit = None
         try:
             ts = self._store_tree (repo, [])
-            if msg:
-                commit_msg = msg
-            else:
-                commit_msg = "create repo"
+            commit_msg = "create repo"
             commit = self._do_commit (repo, repo.head, ts.binsha, commit_msg)
         except Exception, e:
             self.unlock_repo (repo_name)
