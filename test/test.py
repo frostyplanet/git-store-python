@@ -327,6 +327,62 @@ class TestGitStore (unittest.TestCase):
         print "branch1_rev_log", branch1_rev_log
         self.assertEqual (branch1_rev_log, [branch1_v1, branch1_v2, branch1_v3])
 
+    def test_diff_file (self):
+        master_v1 = self.gs.create_repo ("unit_test")
+        self.assert_ (master_v1)
+        master_v2 = self.store ("unit_test", "master", "haha/test_file", "test/test_file")
+        self.assert_ (master_v2)
+        master_v3 = self.store ("unit_test", "master", "haha/test_file", "test/test_file2")
+        self.assert_ (master_v3)
+        patch = """--- a/haha/test_file
++++ b/haha/test_file
+@@ -1,2 +1 @@
+-aaaaaaaaaa
+-bbbbbbbbbbb
++OMG
+"""
+        self.assertEqual (self.gs.diff_patch ("unit_test", "HEAD^", "HEAD"), patch)
+        self.assertEqual (self.gs.diff_patch ("unit_test", "HEAD^", "HEAD", paths=["haha/"]), patch)
+        self.assertEqual (self.gs.diff_patch ("unit_test", "HEAD^", "HEAD", paths=["haha/test_file"]), patch)
+
+    def test_diff_notexist (self):
+        print "* test nonexisting commit"
+        master_v1 = self.gs.create_repo ("unit_test")
+        self.assert_ (master_v1)
+        try:
+            self.gs.diff_patch ("unit_test", "HEAD^", "HEAD")
+            self.fail ("should throw exception")
+        except CommitNotExistError, e:
+            print "caught expected exception %s" % (str(e))
+        master_v2 = self.store ("unit_test", "master", "haha/test_file", "test/test_file")
+        self.assert_ (master_v2)
+        print "* test nonexisting path"
+        self.assertEqual (self.gs.diff_patch ("unit_test", "HEAD^", "HEAD", paths=["nonexisting_path"]), "")
+        
+    def test_diff_multiple_file (self):
+        master_v1 = self.gs.create_repo ("unit_test")
+        self.assert_ (master_v1)
+        branch_v2 = self.gs.create_branch ("unit_test", "branch1")
+        self.assert_ (branch_v2)
+        master_v2 = self.store ("unit_test", "master", "haha/test_file", "test/test_file")
+        self.assert_ (master_v2)
+        branch_v3 = self.store ("unit_test", "branch1", "test_file", "test/test_file2")
+        self.assert_ (branch_v3)
+        patch_master_branch1 = """--- a/haha/test_file
++++ /dev/null
+@@ -1,2 +0,0 @@
+-aaaaaaaaaa
+-bbbbbbbbbbb
+
+--- /dev/null
++++ b/test_file
+@@ -0,0 +1 @@
++OMG
+"""
+        self.assertEqual (self.gs.diff_patch ("unit_test", "master", "branch1"), patch_master_branch1)
+
+
+
 
 #    def test_lock_file (self):
 #        self.gs = GitStore (need_lock="file")
@@ -354,5 +410,7 @@ if __name__ == '__main__':
          unittest.main (failfast=True)
      else:
          unittest.main ()
+#    runner = unittest.TextTestRunner ()
+#    runner.run (TestGitStore ("test_diff_multiple_file"))
 
 # vim: set sw=4 ts=4 et :

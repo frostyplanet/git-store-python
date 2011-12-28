@@ -13,6 +13,15 @@ import stat
 from os.path import dirname, abspath
 import fcntl
 
+class CommitNotExistError (Exception):
+
+    def __init__ (self, commit_name):
+        self.commit_name = commit_name
+
+    def __str__ (self):
+        return "commit %s not exist" % (self.commit_name)
+
+
 def split_path (filepath):
     #TODO : check against invalid path
     assert filepath
@@ -213,84 +222,6 @@ class GitStore (object):
         t_stream = self._store_tree (repo, entities)
         return t_stream
 
-
-#    def _create_path (self, repo, tree, path_segs, fileobj, is_file=True, replace_file=True):
-#        """ a recursive function.
-#            if is_file is True, fileobj a opened python file object or StringIO object contains content to write  
-#               if replace_file is False, will raise Exception when file already present.
-#                   replace_file only effective when is_file is True,
-#            if is_file is False, fileobj must be None, and will return None when directory path already exists
-#                 """
-#        # a recursive function
-#        assert repo is not None
-#        assert isinstance (path_segs, list)
-#        assert not is_file or fileobj is not None
-#        item_name = path_segs[0]
-#        item_mode = None
-#        _istream = None
-#        entities = None
-#        if isinstance (tree, Tree):
-#            item = None
-#            try:
-#                item = tree[item_name]
-#            except KeyError:
-#                pass
-#            if len (path_segs) > 1: # need to step into sub directory
-#                if item is not None:
-#                    item_mode = item.mode
-#                    if not stat.S_ISDIR (item_mode):
-#                        raise Exception ("Oops, '%s' is a file blocking path creation")
-#                else:
-#                    item_mode = self.dir_mode
-#                _istream = self._create_path (repo, item, path_segs[1:], fileobj, is_file, replace_file)
-#                if _istream is None:
-#                    return None
-#            else: 
-#                if item is not None:
-#                    item_mode = item.mode
-#                    if is_file:
-#                        if stat.S_ISDIR (item_mode):
-#                            raise Exception ("Oops, target path exists but is a directory")
-#                        if not replace_file:
-#                            raise Exception ("target path already exists")
-#                    else:
-#                        if stat.S_ISREG (item_mode): 
-#                            raise Exception ("Oops, target path exists but is not a directory")
-#                        return None
-#                else:
-#                    if is_file:
-#                        item_mode = self.file_mode
-#                    else:
-#                        item_mode = self.dir_mode
-#                    # path already exists, do some checking
-#                if is_file:
-#                    _istream = self._store_blob (repo, fileobj) #store file content
-#                    if item is not None:
-#                        if _istream.hexsha == item.hexsha:
-#                            return None #  already has the same file
-#                else: 
-#                    _istream = self._store_tree (repo, []) # create empty directory
-#            # add tree-item to its parent
-#            assert _istream is not None
-#            tm = tree.cache
-#            tm.add (_istream.hexsha, item_mode, item_name, force=True)
-#            tm.set_done ()
-#            entities = tree._cache
-#        else:
-#            if len (path_segs) > 1: # need to create sub-directory structure
-#                _istream = self._create_path (repo, None, path_segs[1:], fileobj, is_file, replace_file)
-#                item_mode = self.dir_mode
-#            else: 
-#                if is_file:
-#                    _istream = self._store_blob (repo, fileobj) #store file content
-#                    item_mode = self.file_mode
-#                else: 
-#                    _istream = self._store_tree (repo, []) # create empty directory
-#                    item_mode = self.dir_mode
-#            assert _istream is not None
-#            entities = [ (_istream.binsha, item_mode, item_name) ]
-#        t_stream = self._store_tree (repo, entities)
-#        return t_stream
 
     def _delete_path (self, repo, tree, path_segs):
         # a recursive function
@@ -726,6 +657,21 @@ class GitStore (object):
             self._throw_err ("cannot create a new commit in '%s': %s" % (repo_name, str (e)))
         self.unlock_repo (repo_name)
         return commit.hexsha
+
+    def diff_patch (self, repo_name, rev_a, rev_b, paths=None):
+        assert repo_name
+        repo = self._get_repo (repo_name)
+        commit_a = self._get_commit (repo, rev_a)
+        commit_b = self._get_commit (repo, rev_b)
+        if commit_a is None:
+            raise CommitNotExistError (commit_a)
+        if commit_b is None:
+            raise CommitNotExistError (commit_b)
+        tree_a = commit_a.tree
+        tree_b = commit_b.tree
+        diffs = tree_a.diff (other=tree_b, paths=paths, create_patch=True)
+        return "\n\n".join (map (lambda x: x.diff, diffs))
+
 
 
     def _lock_repo_file (self, repo_name):
