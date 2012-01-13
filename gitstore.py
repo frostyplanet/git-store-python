@@ -161,6 +161,8 @@ class GitStore (object):
         assert repo
         sio = StringIO ()
         assert isinstance (entities, list)
+        # we need to make sure the entities are sorted by name, which is required by git
+        entities.sort (lambda a,b: cmp (a[2], b[2]))
         tree_to_stream (entities, sio.write)
         sio.seek (0)
         t_stream = IStream ("tree", len(sio.getvalue ()), sio)
