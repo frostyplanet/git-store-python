@@ -1,0 +1,16 @@
+# 2011-12-20 an.ning@aliyun-inc.com (frostyplanet@gmail.com)
+# fix bug: catch excpetion when running under nologin user to prevent commit failure
+--- GitPython-0.3.0-beta2/lib/git/objects/util.py	2010-07-02 22:51:28.000000000 +0800
++++ GitPython-0.3.0-beta2_new/lib/git/objects/util.py	2011-12-20 15:38:57.000000000 +0800
+@@ -62,7 +62,10 @@
+ 	ukn = 'UNKNOWN'
+ 	username = os.environ.get('USER', ukn)
+ 	if username == ukn and hasattr(os, 'getlogin'):
+-		username = os.getlogin()
++		try:
++			username = os.getlogin()
++		except:
++			pass
+ 	# END get username from login
+ 	return "%s@%s" % (username, platform.node())
+ 		
