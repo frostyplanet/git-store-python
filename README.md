@@ -11,4 +11,6 @@ limits:
 
 * Currently no user infomation can be custom in the commits, all writes are done as system user.
 
-* merging between branches is not supported, though you can clone the git repo and do it youself. 
+* Merging between branches is not supported, though you can clone the git repo and do it youself. 
+
+* It has been used in production environment, but more thorough tests may be required.
